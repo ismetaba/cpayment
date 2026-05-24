@@ -1,0 +1,42 @@
+server:
+  port: 1717
+
+spring:
+  application:
+    name: cpayment
+  jackson:
+    default-property-inclusion: non_null
+  rabbitmq:
+    host: ${CUS_RABBIT_HOST:localhost}
+    port: ${CUS_RABBIT_PORT:5672}
+    virtual-host: ${CUS_RABBIT_VHOST:/}
+    username: ${CUS_RABBIT_USER:custody-admin}
+    password: ${CUS_RABBIT_PASS:admin.1234}
+
+cpayment:
+  custody:
+    cusserver:
+      base-url: ${CUS_BASE_URL:http://localhost:1616}
+      holder-jwt-issuer-url: ${CUS_ISSUER:http://localhost:8090/realms/tubitak}
+      holder-client-id: ${CUS_CLIENT_ID:cpayment-holder}
+      holder-client-secret: ${CUS_CLIENT_SECRET:change-me}
+      timeouts:
+        connect: ${CUS_HTTP_CONNECT_TIMEOUT:PT5S}
+        read: ${CUS_HTTP_READ_TIMEOUT:PT30S}
+      rabbit:
+        host: ${CUS_RABBIT_HOST:localhost}
+        port: ${CUS_RABBIT_PORT:5672}
+        virtual-host: ${CUS_RABBIT_VHOST:/}
+        username: ${CUS_RABBIT_USER:custody-admin}
+        password: ${CUS_RABBIT_PASS:admin.1234}
+        create-deposit-queue: CREATE_DEPOSIT_TRANSACTION_QUEUE
+        update-transaction-queue: UPDATE_TRANSACTION_QUEUE
+  payment:
+    merchant-wallets:
+      - merchant-id: 11111111-1111-1111-1111-111111111111
+        network: eth:mainnet
+        wallet-id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
+
+logging:
+  level:
+    com.cpayment: INFO
