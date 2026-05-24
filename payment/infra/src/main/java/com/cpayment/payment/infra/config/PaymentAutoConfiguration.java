@@ -12,6 +12,8 @@ import com.cpayment.payment.domain.port.PayoutMutationGateway;
 import com.cpayment.payment.domain.port.PayoutRepository;
 import com.cpayment.payment.domain.usecase.CreateInvoiceUseCase;
 import com.cpayment.payment.domain.usecase.ExecutePayoutUseCase;
+import com.cpayment.payment.domain.usecase.FindInvoiceUseCase;
+import com.cpayment.payment.domain.usecase.FindPayoutUseCase;
 import com.cpayment.payment.domain.usecase.RecordDepositUseCase;
 import com.cpayment.payment.domain.usecase.UpdatePayoutFromTransferUseCase;
 import com.cpayment.payment.infra.webhook.MerchantWebhookProperties;
@@ -71,5 +73,15 @@ public class PaymentAutoConfiguration {
                                                                           PayoutMutationGateway gateway,
                                                                           Clock clock) {
         return new UpdatePayoutFromTransferUseCase(payouts, gateway, clock);
+    }
+
+    @Bean
+    public FindInvoiceUseCase findInvoiceUseCase(InvoiceRepository invoices) {
+        return new FindInvoiceUseCase(invoices);
+    }
+
+    @Bean
+    public FindPayoutUseCase findPayoutUseCase(PayoutRepository payouts) {
+        return new FindPayoutUseCase(payouts);
     }
 }

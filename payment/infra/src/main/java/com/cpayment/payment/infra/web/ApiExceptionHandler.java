@@ -3,8 +3,10 @@ package com.cpayment.payment.infra.web;
 import com.cpayment.core.exception.IdempotencyConflictException;
 import com.cpayment.core.exception.IdempotencyInProgressException;
 import com.cpayment.custody.domain.exception.CustodyException;
+import com.cpayment.payment.domain.exception.InvoiceNotFoundException;
 import com.cpayment.payment.domain.exception.MerchantWalletNotConfiguredException;
 import com.cpayment.payment.domain.exception.PaymentException;
+import com.cpayment.payment.domain.exception.PayoutNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -42,6 +44,18 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiError> onIdempotencyInProgress(IdempotencyInProgressException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
             .body(ApiError.of("IDEMPOTENCY_IN_PROGRESS", ex.getMessage()));
+    }
+
+    @ExceptionHandler(InvoiceNotFoundException.class)
+    public ResponseEntity<ApiError> onInvoiceNotFound(InvoiceNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ApiError.of("INVOICE_NOT_FOUND", ex.getMessage()));
+    }
+
+    @ExceptionHandler(PayoutNotFoundException.class)
+    public ResponseEntity<ApiError> onPayoutNotFound(PayoutNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ApiError.of("PAYOUT_NOT_FOUND", ex.getMessage()));
     }
 
     @ExceptionHandler(MerchantWalletNotConfiguredException.class)
