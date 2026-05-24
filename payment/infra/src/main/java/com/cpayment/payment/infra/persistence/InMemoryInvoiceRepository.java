@@ -4,20 +4,16 @@ import com.cpayment.custody.domain.model.AccountId;
 import com.cpayment.payment.domain.model.Invoice;
 import com.cpayment.payment.domain.model.InvoiceId;
 import com.cpayment.payment.domain.port.InvoiceRepository;
-import org.springframework.stereotype.Component;
 
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
- * Placeholder repository. Production replacement: JPA + Oracle table {@code cpayment_invoice}
- * with an index on {@code custody_account_id}.
- *
- * <p>Two maps mirror each other to give O(1) lookups for both access patterns. Writes
- * use a single critical section to keep them consistent.
+ * Lightweight test-only implementation. Production uses
+ * {@link com.cpayment.payment.infra.persistence.jpa.JpaInvoiceRepository}. This class
+ * is NOT a Spring bean (no {@code @Component}); tests instantiate it directly.
  */
-@Component
 public class InMemoryInvoiceRepository implements InvoiceRepository {
 
     private final ConcurrentMap<InvoiceId, Invoice> byId = new ConcurrentHashMap<>();

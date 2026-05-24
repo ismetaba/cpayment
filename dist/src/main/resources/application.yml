@@ -6,6 +6,20 @@ spring:
     name: cpayment
   jackson:
     default-property-inclusion: non_null
+  datasource:
+    url: ${CPAYMENT_DB_URL:jdbc:oracle:thin:@//localhost:1521/CPAYMENT}
+    username: ${CPAYMENT_DB_USER:CPAYMENT}
+    password: ${CPAYMENT_DB_PASS:change-me}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc.time_zone: UTC
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+    enabled: true
   rabbitmq:
     host: ${CUS_RABBIT_HOST:localhost}
     port: ${CUS_RABBIT_PORT:5672}

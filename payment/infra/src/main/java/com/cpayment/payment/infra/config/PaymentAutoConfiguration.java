@@ -7,16 +7,22 @@ import com.cpayment.payment.domain.port.MerchantWalletResolver;
 import com.cpayment.payment.domain.port.PaymentMetrics;
 import com.cpayment.payment.domain.usecase.CreateInvoiceUseCase;
 import com.cpayment.payment.domain.usecase.RecordDepositUseCase;
+import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
 
 import java.time.Clock;
 
 @Configuration
 @EnableConfigurationProperties(MerchantWalletProperties.class)
 @ComponentScan(basePackages = "com.cpayment.payment.infra")
+@EntityScan(basePackages = "com.cpayment.payment.infra.persistence.jpa")
+@EnableJpaRepositories(basePackages = "com.cpayment.payment.infra.persistence.jpa")
+@EnableTransactionManagement
 public class PaymentAutoConfiguration {
 
     @Bean

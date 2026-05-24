@@ -5,22 +5,19 @@ import com.cpayment.core.exception.IdempotencyInProgressException;
 import com.cpayment.core.model.IdempotencyKey;
 import com.cpayment.payment.domain.model.Invoice;
 import com.cpayment.payment.domain.port.InvoiceIdempotencyStore;
-import org.springframework.stereotype.Component;
 
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
- * In-memory two-phase idempotency store. Production replacement: a JPA-backed table
- * with a unique constraint on {@code key} and a {@code state CHECK ('PENDING','COMPLETED')}
- * column so the database enforces atomicity.
+ * Lightweight test-only implementation. Production uses
+ * {@link com.cpayment.payment.infra.persistence.jpa.JpaInvoiceIdempotencyStore}. Tests
+ * instantiate this directly; not a Spring bean.
  *
- * <p>All transitions go through {@link ConcurrentMap#compute} so the test+swap is atomic
- * under contention. A claim is sealed inside {@link Entry} to make the two states
- * exhaustively pattern-matched.
+ * <p>All transitions go through {@link ConcurrentMap#compute} for atomicity. A claim is
+ * sealed inside {@link Entry} to make the two states exhaustively pattern-matched.
  */
-@Component
 public class InMemoryInvoiceIdempotencyStore implements InvoiceIdempotencyStore {
 
     private sealed interface Entry permits Pending, Completed {
