@@ -1,13 +1,19 @@
 package com.cpayment.payment.infra.config;
 
 import com.cpayment.custody.domain.port.AccountPort;
+import com.cpayment.custody.domain.port.TransferPort;
 import com.cpayment.payment.domain.port.InvoiceIdempotencyStore;
 import com.cpayment.payment.domain.port.InvoiceMutationGateway;
 import com.cpayment.payment.domain.port.InvoiceRepository;
 import com.cpayment.payment.domain.port.MerchantWalletResolver;
 import com.cpayment.payment.domain.port.PaymentMetrics;
+import com.cpayment.payment.domain.port.PayoutIdempotencyStore;
+import com.cpayment.payment.domain.port.PayoutMutationGateway;
+import com.cpayment.payment.domain.port.PayoutRepository;
 import com.cpayment.payment.domain.usecase.CreateInvoiceUseCase;
+import com.cpayment.payment.domain.usecase.ExecutePayoutUseCase;
 import com.cpayment.payment.domain.usecase.RecordDepositUseCase;
+import com.cpayment.payment.domain.usecase.UpdatePayoutFromTransferUseCase;
 import com.cpayment.payment.infra.webhook.MerchantWebhookProperties;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -50,5 +56,20 @@ public class PaymentAutoConfiguration {
                                                      PaymentMetrics metrics,
                                                      Clock clock) {
         return new RecordDepositUseCase(invoices, gateway, metrics, clock);
+    }
+
+    @Bean
+    public ExecutePayoutUseCase executePayoutUseCase(PayoutIdempotencyStore idempotency,
+                                                     PayoutMutationGateway gateway,
+                                                     TransferPort transfers,
+                                                     Clock clock) {
+        return new ExecutePayoutUseCase(idempotency, gateway, transfers, clock);
+    }
+
+    @Bean
+    public UpdatePayoutFromTransferUseCase updatePayoutFromTransferUseCase(PayoutRepository payouts,
+                                                                          PayoutMutationGateway gateway,
+                                                                          Clock clock) {
+        return new UpdatePayoutFromTransferUseCase(payouts, gateway, clock);
     }
 }

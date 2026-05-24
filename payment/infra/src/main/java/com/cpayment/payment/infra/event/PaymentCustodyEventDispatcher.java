@@ -4,6 +4,7 @@ import com.cpayment.custody.domain.event.CustodyEvent;
 import com.cpayment.custody.domain.event.CustodyEventEnvelope;
 import com.cpayment.custody.domain.port.CustodyEventSink;
 import com.cpayment.payment.domain.usecase.RecordDepositUseCase;
+import com.cpayment.payment.domain.usecase.UpdatePayoutFromTransferUseCase;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tags;
@@ -12,13 +13,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * cpayment-side implementation of {@link CustodyEventSink}. Routes each normalized
- * envelope to the appropriate domain use case; unhandled variants are counted but
- * never throw.
+ * Routes normalized {@link CustodyEvent}s to the appropriate domain use case.
  *
- * <p>Exhaustive pattern-matching on the sealed {@link CustodyEvent} hierarchy means
- * the compiler flags any newly-added event type as a missing branch — preventing
- * silent drops as the protocol evolves.
+ * <p>Exhaustive sealed-type matching means the compiler flags any newly-added event
+ * type as a missing branch — preventing silent drops as the protocol evolves.
  */
 @Component
 public class PaymentCustodyEventDispatcher implements CustodyEventSink {
@@ -26,10 +24,14 @@ public class PaymentCustodyEventDispatcher implements CustodyEventSink {
     private static final Logger log = LoggerFactory.getLogger(PaymentCustodyEventDispatcher.class);
 
     private final RecordDepositUseCase recordDeposit;
+    private final UpdatePayoutFromTransferUseCase updatePayout;
     private final MeterRegistry meters;
 
-    public PaymentCustodyEventDispatcher(RecordDepositUseCase recordDeposit, MeterRegistry meters) {
+    public PaymentCustodyEventDispatcher(RecordDepositUseCase recordDeposit,
+                                         UpdatePayoutFromTransferUseCase updatePayout,
+                                         MeterRegistry meters) {
         this.recordDeposit = recordDeposit;
+        this.updatePayout = updatePayout;
         this.meters = meters;
     }
 
@@ -38,10 +40,10 @@ public class PaymentCustodyEventDispatcher implements CustodyEventSink {
         switch (envelope.event()) {
             case CustodyEvent.DepositDetected e   -> recordDeposit.onDetected(e);
             case CustodyEvent.DepositConfirmed e  -> recordDeposit.onConfirmed(e);
-            case CustodyEvent.TransferBroadcast e -> noteUnhandled("TransferBroadcast", envelope);
-            case CustodyEvent.TransferConfirmed e -> noteUnhandled("TransferConfirmed", envelope);
-            case CustodyEvent.TransferFailed e    -> noteUnhandled("TransferFailed", envelope);
-            case CustodyEvent.TransferReplaced e  -> noteUnhandled("TransferReplaced", envelope);
+            case CustodyEvent.TransferBroadcast e -> updatePayout.onBroadcast(e);
+            case CustodyEvent.TransferConfirmed e -> updatePayout.onConfirmed(e);
+            case CustodyEvent.TransferFailed e    -> updatePayout.onFailed(e);
+            case CustodyEvent.TransferReplaced e  -> updatePayout.onReplaced(e);
             case CustodyEvent.ApprovalPending e   -> noteUnhandled("ApprovalPending", envelope);
             case CustodyEvent.ApprovalGranted e   -> noteUnhandled("ApprovalGranted", envelope);
             case CustodyEvent.ApprovalRejected e  -> noteUnhandled("ApprovalRejected", envelope);
@@ -54,6 +56,6 @@ public class PaymentCustodyEventDispatcher implements CustodyEventSink {
             .tags(Tags.of("type", typeName))
             .register(meters).increment();
         log.debug("event.unhandled type={} provider={} providerEventId={}",
-                  typeName, envelope.providerName(), envelope.providerEventId());
+            typeName, envelope.providerName(), envelope.providerEventId());
     }
 }
