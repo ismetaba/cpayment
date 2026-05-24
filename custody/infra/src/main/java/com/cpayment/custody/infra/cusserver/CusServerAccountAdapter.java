@@ -72,12 +72,6 @@ public class CusServerAccountAdapter implements AccountPort {
     }
 
     @Override
-    public Optional<Account> findAccount(AccountId id) {
-        throw new UnsupportedOperationException(
-            "cus-server does not expose a per-id account read; use listAccountsByWallet");
-    }
-
-    @Override
     public List<Account> listAccountsByWallet(WalletId walletId) {
         CusResponse<PageOfAccount> response;
         try {

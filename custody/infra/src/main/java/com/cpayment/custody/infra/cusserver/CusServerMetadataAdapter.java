@@ -25,7 +25,7 @@ public class CusServerMetadataAdapter implements CustodyMetadata {
             BatchSemantic.BEST_EFFORT,             // adapter loops single send-transfer calls
             GasManagement.CPAYMENT_OWNED,          // cpayment owns a GAS_FUNDER wallet
             ApprovalModel.AUTO,                    // policy currently auto-approves all
-            EventTransport.BRIDGE,                 // RabbitMQ → custody-bridge → CustodyEventPublisher
+            EventTransport.BRIDGE,                 // RabbitMQ → custody-bridge → CustodyEventSink
             EnumSet.of(
                 OptionalFeature.LOCAL_IDEMPOTENCY,
                 OptionalFeature.ADDRESS_VALIDATION_LOCAL,

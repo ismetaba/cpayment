@@ -2,7 +2,7 @@ package com.cpayment.custody.infra.cusserver.event;
 
 import com.cpayment.custody.domain.event.CustodyEvent;
 import com.cpayment.custody.domain.event.CustodyEventEnvelope;
-import com.cpayment.custody.domain.port.CustodyEventPublisher;
+import com.cpayment.custody.domain.port.CustodyEventSink;
 import com.cpayment.custody.infra.cusserver.event.dto.CreateDepositTransactionsEventDTO;
 import com.cpayment.custody.infra.cusserver.event.dto.DepositTransactionDTO;
 import org.slf4j.Logger;
@@ -38,14 +38,14 @@ public class CusServerEventBridge {
     private static final String PROVIDER = "cus-server";
     private static final Logger log = LoggerFactory.getLogger(CusServerEventBridge.class);
 
-    private final CustodyEventPublisher publisher;
+    private final CustodyEventSink sink;
     private final DepositEventMapper depositMapper;
     private final Clock clock;
 
-    public CusServerEventBridge(CustodyEventPublisher publisher,
+    public CusServerEventBridge(CustodyEventSink sink,
                                 DepositEventMapper depositMapper,
                                 Clock clock) {
-        this.publisher = publisher;
+        this.sink = sink;
         this.depositMapper = depositMapper;
         this.clock = clock;
     }
@@ -76,7 +76,7 @@ public class CusServerEventBridge {
 
     private void emit(CustodyEvent event, String providerEventId, Instant occurredAt) {
         Instant now = clock.instant();
-        publisher.publish(new CustodyEventEnvelope(
+        sink.accept(new CustodyEventEnvelope(
             UUID.randomUUID(),
             occurredAt != null ? occurredAt : now,
             now,

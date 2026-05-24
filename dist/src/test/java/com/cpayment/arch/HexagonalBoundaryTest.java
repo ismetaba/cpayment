@@ -1,0 +1,113 @@
+package com.cpayment.arch;
+
+import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.importer.ClassFileImporter;
+import com.tngtech.archunit.core.importer.ImportOption;
+import com.tngtech.archunit.lang.ArchRule;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.methods;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+
+/**
+ * Compile-tested guarantees that the hexagonal boundaries hold across all modules.
+ *
+ * <p>Lives in {@code dist} because every other module is on its classpath — these
+ * checks are inherently cross-module. If any rule fails, the offending dependency
+ * must be removed before the build is allowed to pass.
+ */
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+class HexagonalBoundaryTest {
+
+    private static final String ROOT = "com.cpayment";
+    private JavaClasses classes;
+
+    @BeforeAll
+    void importClasses() {
+        classes = new ClassFileImporter()
+            .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+            .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_JARS)
+            .importPackages(ROOT);
+    }
+
+    @Test
+    void custody_domain_must_not_depend_on_any_framework() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("..custody.domain..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                "org.springframework..",
+                "jakarta.servlet..",
+                "com.fasterxml.jackson..",
+                "org.springframework.amqp..");
+        rule.check(classes);
+    }
+
+    @Test
+    void payment_domain_must_not_depend_on_any_framework() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("..payment.domain..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                "org.springframework..",
+                "jakarta.servlet..",
+                "com.fasterxml.jackson..",
+                "org.springframework.amqp..");
+        rule.check(classes);
+    }
+
+    @Test
+    void core_must_be_self_contained() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("..core..")
+            .should().dependOnClassesThat().resideInAnyPackage(
+                "org.springframework..",
+                "com.cpayment.custody..",
+                "com.cpayment.payment..");
+        rule.check(classes);
+    }
+
+    @Test
+    void payment_must_not_depend_on_custody_infra() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("..payment..")
+            .should().dependOnClassesThat().resideInAPackage("..custody.infra..");
+        rule.check(classes);
+    }
+
+    @Test
+    void custody_must_not_depend_on_payment() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("..custody..")
+            .should().dependOnClassesThat().resideInAPackage("..payment..");
+        rule.check(classes);
+    }
+
+    @Test
+    void rest_controllers_only_live_in_infra() {
+        ArchRule rule = classes()
+            .that().areAnnotatedWith("org.springframework.web.bind.annotation.RestController")
+            .should().resideInAPackage("..infra..");
+        rule.check(classes);
+    }
+
+    @Test
+    void rabbit_listener_methods_only_live_in_infra() {
+        ArchRule rule = methods()
+            .that().areAnnotatedWith("org.springframework.amqp.rabbit.annotation.RabbitListener")
+            .should().beDeclaredInClassesThat().resideInAPackage("..infra..");
+        rule.check(classes);
+    }
+
+    @Test
+    void domain_packages_must_not_be_annotated_as_spring_components() {
+        ArchRule rule = noClasses()
+            .that().resideInAnyPackage("..custody.domain..", "..payment.domain..", "..core..")
+            .should().beAnnotatedWith("org.springframework.stereotype.Component")
+            .orShould().beAnnotatedWith("org.springframework.stereotype.Service")
+            .orShould().beAnnotatedWith("org.springframework.stereotype.Repository")
+            .orShould().beAnnotatedWith("org.springframework.context.annotation.Configuration");
+        rule.check(classes);
+    }
+}

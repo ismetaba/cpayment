@@ -1,13 +1,20 @@
 package com.cpayment.custody.domain.port;
 
 import com.cpayment.custody.domain.model.Account;
-import com.cpayment.custody.domain.model.AccountId;
 import com.cpayment.custody.domain.model.CreateAccountCommand;
 import com.cpayment.custody.domain.model.WalletId;
 
 import java.util.List;
-import java.util.Optional;
 
+/**
+ * Account provisioning + listing.
+ *
+ * <p>A per-id read ({@code findAccount(AccountId)}) is deliberately NOT on this port:
+ * cus-server does not offer such an endpoint, and synthesising it via list-and-filter
+ * would be O(n) and silently slow as wallets grow. If a future provider supports it,
+ * declare a separate {@code AccountLookupPort} and let cpayment depend on it
+ * conditionally (capability flag). LSP &gt; convenience.
+ */
 public interface AccountPort {
 
     /**
@@ -16,8 +23,6 @@ public interface AccountPort {
      * make a separate call to look up the address.
      */
     Account createAccount(CreateAccountCommand cmd);
-
-    Optional<Account> findAccount(AccountId id);
 
     List<Account> listAccountsByWallet(WalletId walletId);
 }
