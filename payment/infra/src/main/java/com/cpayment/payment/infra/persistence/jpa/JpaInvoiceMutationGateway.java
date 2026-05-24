@@ -47,7 +47,8 @@ public class JpaInvoiceMutationGateway implements InvoiceMutationGateway {
             UUID eventId = UUID.randomUUID();
             WebhookOutboxEntity row = new WebhookOutboxEntity();
             row.setId(eventId);
-            row.setInvoiceId(event.invoice().id().value());
+            row.setResourceId(event.invoice().id().value());
+            row.setResourceType(WebhookOutboxEntity.ResourceType.INVOICE);
             row.setMerchantId(event.invoice().merchantId().value());
             row.setEventType(event.type().name());
             row.setPayload(serialize(eventId, event));

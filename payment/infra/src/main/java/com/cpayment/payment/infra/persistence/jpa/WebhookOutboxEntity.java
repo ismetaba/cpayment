@@ -15,14 +15,19 @@ import java.util.UUID;
 @Table(name = "cpayment_webhook_outbox")
 public class WebhookOutboxEntity {
 
-    public enum Status { PENDING, DELIVERED, FAILED }
+    public enum Status       { PENDING, DELIVERED, FAILED }
+    public enum ResourceType { INVOICE, PAYOUT }
 
     @Id
     @Column(name = "id", nullable = false, updatable = false)
     private UUID id;
 
-    @Column(name = "invoice_id", nullable = false)
-    private UUID invoiceId;
+    @Column(name = "resource_id", nullable = false)
+    private UUID resourceId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "resource_type", nullable = false, length = 20)
+    private ResourceType resourceType;
 
     @Column(name = "merchant_id", nullable = false)
     private UUID merchantId;
@@ -55,8 +60,10 @@ public class WebhookOutboxEntity {
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
-    public UUID getInvoiceId() { return invoiceId; }
-    public void setInvoiceId(UUID invoiceId) { this.invoiceId = invoiceId; }
+    public UUID getResourceId() { return resourceId; }
+    public void setResourceId(UUID resourceId) { this.resourceId = resourceId; }
+    public ResourceType getResourceType() { return resourceType; }
+    public void setResourceType(ResourceType resourceType) { this.resourceType = resourceType; }
     public UUID getMerchantId() { return merchantId; }
     public void setMerchantId(UUID merchantId) { this.merchantId = merchantId; }
     public String getEventType() { return eventType; }

@@ -5,3 +5,5 @@ databaseChangeLog:
       file: db/changelog/02-webhook-outbox.yaml
   - include:
       file: db/changelog/03-payout.yaml
+  - include:
+      file: db/changelog/04-outbox-rename-resource.yaml

@@ -48,7 +48,8 @@ public class JpaPayoutMutationGateway implements PayoutMutationGateway {
             UUID eventId = UUID.randomUUID();
             WebhookOutboxEntity row = new WebhookOutboxEntity();
             row.setId(eventId);
-            row.setInvoiceId(event.payout().id().value()); // schema-misnamed; renamed in changeset 6
+            row.setResourceId(event.payout().id().value());
+            row.setResourceType(WebhookOutboxEntity.ResourceType.PAYOUT);
             row.setMerchantId(event.payout().merchantId().value());
             row.setEventType(event.type().name());
             row.setPayload(serialize(eventId, event));

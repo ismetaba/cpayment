@@ -1,0 +1,20 @@
+databaseChangeLog:
+  - changeSet:
+      id: 6-outbox-rename-invoice-id-and-add-resource-type
+      author: cpayment
+      changes:
+        # Existing rows are all invoice-events (this changeset runs before any payouts
+        # ship), so we can backfill resource_type='INVOICE' safely.
+        - addColumn:
+            tableName: cpayment_webhook_outbox
+            columns:
+              - column:
+                  name: resource_type
+                  type: VARCHAR(20)
+                  defaultValue: INVOICE
+                  constraints: { nullable: false }
+        - renameColumn:
+            tableName: cpayment_webhook_outbox
+            oldColumnName: invoice_id
+            newColumnName: resource_id
+            columnDataType: UUID
