@@ -5,6 +5,8 @@ import com.cpayment.custody.domain.event.CustodyEventEnvelope;
 import com.cpayment.custody.domain.port.CustodyEventSink;
 import com.cpayment.custody.infra.cusserver.event.dto.CreateDepositTransactionsEventDTO;
 import com.cpayment.custody.infra.cusserver.event.dto.DepositTransactionDTO;
+import com.cpayment.custody.infra.cusserver.event.dto.TransactionUpdatePayloadDTO;
+import com.cpayment.custody.infra.cusserver.event.dto.UpdateTransactionEventDTO;
 import com.cpayment.custody.infra.cusserver.observability.EventBridgeMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,6 +17,7 @@ import org.springframework.stereotype.Component;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -45,15 +48,18 @@ public class CusServerEventBridge {
 
     private final CustodyEventSink sink;
     private final DepositEventMapper depositMapper;
+    private final TransferUpdateMapper transferMapper;
     private final EventBridgeMetrics metrics;
     private final Clock clock;
 
     public CusServerEventBridge(CustodyEventSink sink,
                                 DepositEventMapper depositMapper,
+                                TransferUpdateMapper transferMapper,
                                 EventBridgeMetrics metrics,
                                 Clock clock) {
         this.sink = sink;
         this.depositMapper = depositMapper;
+        this.transferMapper = transferMapper;
         this.metrics = metrics;
         this.clock = clock;
     }
@@ -65,18 +71,21 @@ public class CusServerEventBridge {
             log.warn("event.deposit.empty queue={}", CREATE_DEPOSIT_QUEUE);
             return;
         }
-        List<DepositTransactionDTO> items = payload.depositTransactions();
-        for (DepositTransactionDTO d : items) {
+        for (DepositTransactionDTO d : payload.depositTransactions()) {
             withCorrelationId(providerEventIdOf(d), () -> dispatchDeposit(d));
         }
     }
 
     @RabbitListener(queues = "${cpayment.custody.cusserver.rabbit.update-transaction-queue}")
-    public void onUpdateTransaction(Object payload) {
+    public void onUpdateTransaction(UpdateTransactionEventDTO payload) {
         metrics.received(UPDATE_TRANSACTION_QUEUE);
-        // Out of scope for the first slice — outbound transfer state changes will be
-        // mapped to TransferBroadcast/Confirmed/Failed/Replaced in a later iteration.
-        log.debug("event.update-transaction received (mapping not implemented yet)");
+        if (payload == null || payload.payloads() == null) {
+            log.warn("event.update-tx.empty queue={}", UPDATE_TRANSACTION_QUEUE);
+            return;
+        }
+        for (TransactionUpdatePayloadDTO p : payload.payloads()) {
+            withCorrelationId(transferEventIdOf(p), () -> dispatchTransferUpdate(p));
+        }
     }
 
     private void dispatchDeposit(DepositTransactionDTO d) {
@@ -87,6 +96,22 @@ public class CusServerEventBridge {
         } catch (RuntimeException ex) {
             metrics.mappingFailed(CREATE_DEPOSIT_QUEUE);
             log.error("event.deposit.mapping-failed dto={} reason={}", d, ex.getMessage(), ex);
+        }
+    }
+
+    private void dispatchTransferUpdate(TransactionUpdatePayloadDTO p) {
+        try {
+            Optional<CustodyEvent> mapped = transferMapper.toCustodyEvent(p);
+            if (mapped.isEmpty()) {
+                log.warn("event.update-tx.unknown-type type={} txId={}", p.type(), p.transactionId());
+                return;
+            }
+            CustodyEvent event = mapped.get();
+            emit(event, transferEventIdOf(p), p.occurredAt());
+            metrics.emitted(UPDATE_TRANSACTION_QUEUE, event.getClass().getSimpleName());
+        } catch (RuntimeException ex) {
+            metrics.mappingFailed(UPDATE_TRANSACTION_QUEUE);
+            log.error("event.update-tx.mapping-failed dto={} reason={}", p, ex.getMessage(), ex);
         }
     }
 
@@ -115,5 +140,9 @@ public class CusServerEventBridge {
 
     private static String providerEventIdOf(DepositTransactionDTO d) {
         return d.id() != null ? d.id().toString() : "unknown";
+    }
+
+    private static String transferEventIdOf(TransactionUpdatePayloadDTO p) {
+        return p.transactionId() != null ? p.transactionId().toString() : "unknown";
     }
 }
