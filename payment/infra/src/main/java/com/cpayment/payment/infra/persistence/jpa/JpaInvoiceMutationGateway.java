@@ -44,12 +44,13 @@ public class JpaInvoiceMutationGateway implements InvoiceMutationGateway {
 
         Instant now = clock.instant();
         for (InvoiceEvent event : events) {
+            UUID eventId = UUID.randomUUID();
             WebhookOutboxEntity row = new WebhookOutboxEntity();
-            row.setId(UUID.randomUUID());
+            row.setId(eventId);
             row.setInvoiceId(event.invoice().id().value());
             row.setMerchantId(event.invoice().merchantId().value());
             row.setEventType(event.type().name());
-            row.setPayload(serialize(event));
+            row.setPayload(serialize(eventId, event));
             row.setStatus(WebhookOutboxEntity.Status.PENDING);
             row.setAttempts(0);
             row.setNextAttemptAt(now);
@@ -59,9 +60,9 @@ public class JpaInvoiceMutationGateway implements InvoiceMutationGateway {
         }
     }
 
-    private String serialize(InvoiceEvent event) {
+    private String serialize(UUID eventId, InvoiceEvent event) {
         try {
-            return objectMapper.writeValueAsString(WebhookPayload.from(event));
+            return objectMapper.writeValueAsString(WebhookPayload.of(eventId, event));
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("failed to serialize webhook payload for "
                 + event.invoice().id().value(), e);

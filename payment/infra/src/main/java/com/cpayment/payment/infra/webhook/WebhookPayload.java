@@ -34,10 +34,15 @@ public record WebhookPayload(
     InvoicePayload invoice
 ) {
 
-    public static WebhookPayload from(InvoiceEvent e) {
+    /**
+     * Builds the wire payload using the caller-supplied {@code eventId}. The outbox row
+     * id is passed in so it matches the {@code X-Cpayment-Event-Id} HTTP header — merchants
+     * use a single id to dedupe both the header and the body.
+     */
+    public static WebhookPayload of(UUID eventId, InvoiceEvent e) {
         Invoice i = e.invoice();
         return new WebhookPayload(
-            UUID.randomUUID(),
+            eventId,
             e.type().name(),
             Instant.now(),
             new InvoicePayload(

@@ -45,12 +45,13 @@ public class JpaPayoutMutationGateway implements PayoutMutationGateway {
 
         Instant now = clock.instant();
         for (PayoutEvent event : events) {
+            UUID eventId = UUID.randomUUID();
             WebhookOutboxEntity row = new WebhookOutboxEntity();
-            row.setId(UUID.randomUUID());
-            row.setInvoiceId(event.payout().id().value()); // re-using the column as "resource_id"
+            row.setId(eventId);
+            row.setInvoiceId(event.payout().id().value()); // schema-misnamed; renamed in changeset 6
             row.setMerchantId(event.payout().merchantId().value());
             row.setEventType(event.type().name());
-            row.setPayload(serialize(event));
+            row.setPayload(serialize(eventId, event));
             row.setStatus(WebhookOutboxEntity.Status.PENDING);
             row.setAttempts(0);
             row.setNextAttemptAt(now);
@@ -60,9 +61,9 @@ public class JpaPayoutMutationGateway implements PayoutMutationGateway {
         }
     }
 
-    private String serialize(PayoutEvent event) {
+    private String serialize(UUID eventId, PayoutEvent event) {
         try {
-            return objectMapper.writeValueAsString(PayoutWebhookPayload.from(event));
+            return objectMapper.writeValueAsString(PayoutWebhookPayload.of(eventId, event));
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("failed to serialize payout webhook payload for "
                 + event.payout().id().value(), e);

@@ -39,10 +39,12 @@ public record PayoutWebhookPayload(
     PayoutBody payout
 ) {
 
-    public static PayoutWebhookPayload from(PayoutEvent e) {
+    /** Builds the wire payload using the outbox row's UUID as {@code eventId} so it
+     *  matches the {@code X-Cpayment-Event-Id} HTTP header (used by merchants to dedupe). */
+    public static PayoutWebhookPayload of(UUID eventId, PayoutEvent e) {
         Payout p = e.payout();
         return new PayoutWebhookPayload(
-            UUID.randomUUID(),
+            eventId,
             e.type().name(),
             Instant.now(),
             new PayoutBody(
