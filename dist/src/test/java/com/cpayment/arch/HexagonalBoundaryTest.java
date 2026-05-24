@@ -110,4 +110,39 @@ class HexagonalBoundaryTest {
             .orShould().beAnnotatedWith("org.springframework.context.annotation.Configuration");
         rule.check(classes);
     }
+
+    @Test
+    void jpa_entities_only_in_persistence_jpa_package() {
+        ArchRule rule = classes()
+            .that().areAnnotatedWith("jakarta.persistence.Entity")
+            .should().resideInAPackage("..infra.persistence.jpa..");
+        rule.check(classes);
+    }
+
+    @Test
+    void spring_data_repositories_only_in_persistence_jpa_package() {
+        ArchRule rule = classes()
+            .that().areAssignableTo("org.springframework.data.repository.Repository")
+            .and().areNotInterfaces()
+            .or().areInterfaces()
+                .and().areAssignableTo("org.springframework.data.repository.Repository")
+            .should().resideInAPackage("..infra.persistence.jpa..");
+        rule.check(classes);
+    }
+
+    @Test
+    void rest_controllers_only_in_infra_web_package() {
+        ArchRule rule = classes()
+            .that().areAnnotatedWith("org.springframework.web.bind.annotation.RestController")
+            .should().resideInAPackage("..infra.web..");
+        rule.check(classes);
+    }
+
+    @Test
+    void persistence_must_not_depend_on_web() {
+        ArchRule rule = noClasses()
+            .that().resideInAPackage("..infra.persistence..")
+            .should().dependOnClassesThat().resideInAPackage("..infra.web..");
+        rule.check(classes);
+    }
 }

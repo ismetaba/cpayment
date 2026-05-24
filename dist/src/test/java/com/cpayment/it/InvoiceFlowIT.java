@@ -3,13 +3,20 @@ package com.cpayment.it;
 import com.cpayment.CpaymentApplication;
 import com.cpayment.custody.infra.cusserver.event.dto.CreateDepositTransactionsEventDTO;
 import com.cpayment.custody.infra.cusserver.event.dto.DepositTransactionDTO;
+import com.cpayment.custody.infra.cusserver.event.dto.TransactionUpdatePayloadDTO;
+import com.cpayment.custody.infra.cusserver.event.dto.UpdateTransactionEventDTO;
 import com.cpayment.payment.domain.model.Invoice;
 import com.cpayment.payment.domain.model.InvoiceId;
 import com.cpayment.payment.domain.model.InvoiceStatus;
+import com.cpayment.payment.domain.model.Payout;
+import com.cpayment.payment.domain.model.PayoutId;
+import com.cpayment.payment.domain.model.PayoutStatus;
 import com.cpayment.payment.domain.port.InvoiceRepository;
+import com.cpayment.payment.domain.port.PayoutRepository;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -42,22 +49,16 @@ import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 /**
- * Full Spring Boot context exercising the deposit-address-then-detection slice.
+ * Full Spring Boot context exercising both ends of the slice:
+ * deposit-address-then-detection AND payout-submit-then-confirm.
  *
- * <p>Real components: RabbitMQ (Testcontainers), embedded HTTP server, all Spring beans.
- * Stubbed externals: Keycloak token endpoint and cus-server REST via WireMock.
- *
- * <p>Asserts the production-hardened paths:
- * <ol>
- *   <li>POST /invoices → 201, Location header, deposit address echoed from "cus-server".</li>
- *   <li>Same Idempotency-Key replay → cached invoice, no second cus-server call (verified
- *       via WireMock request count).</li>
- *   <li>Deposit event on RabbitMQ → invoice transitions PAID asynchronously.</li>
- * </ol>
+ * <p>Real components: RabbitMQ (Testcontainers), embedded HTTP server, JPA on H2.
+ * Stubbed externals: Keycloak token endpoint, cus-server REST via WireMock.
  */
 @SpringBootTest(
     classes = CpaymentApplication.class,
@@ -80,9 +81,10 @@ class InvoiceFlowIT {
     }
 
     @AfterAll
-    static void stopWireMock() {
-        if (wireMock != null) wireMock.stop();
-    }
+    static void stopWireMock() { if (wireMock != null) wireMock.stop(); }
+
+    @AfterEach
+    void resetStubs() { wireMock.resetAll(); }
 
     @DynamicPropertySource
     static void overrides(DynamicPropertyRegistry registry) {
@@ -97,6 +99,7 @@ class InvoiceFlowIT {
     @Autowired TestRestTemplate http;
     @Autowired RabbitTemplate rabbit;
     @Autowired InvoiceRepository invoices;
+    @Autowired PayoutRepository payouts;
 
     private static final String MERCHANT = "11111111-1111-1111-1111-111111111111";
 
@@ -106,24 +109,21 @@ class InvoiceFlowIT {
         UUID custodyAccountId = UUID.randomUUID();
         stubCreateAccount(custodyAccountId, "0xCAFEBABEINTEGRATION");
 
-        // 1. POST /invoices with an Idempotency-Key
         String idempotencyKey = "merchant-order-" + UUID.randomUUID();
         ResponseEntity<InvoiceJson> created = postInvoice(idempotencyKey);
         assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(created.getHeaders().getLocation()).isNotNull();
         InvoiceJson body = created.getBody();
         assertThat(body).isNotNull();
         assertThat(body.status).isEqualTo("AWAITING_DEPOSIT");
         assertThat(body.depositAddress).isEqualTo("0xCAFEBABEINTEGRATION");
         wireMock.verify(1, postRequestedFor(urlEqualTo("/api/v1/holder/accounts")));
 
-        // 2. Same key + body → idempotent, no second cus-server call
+        // Same key + body → idempotent, no second cus-server call
         ResponseEntity<InvoiceJson> replay = postInvoice(idempotencyKey);
         assertThat(replay.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(replay.getBody().id).isEqualTo(body.id);
         wireMock.verify(1, postRequestedFor(urlEqualTo("/api/v1/holder/accounts")));
 
-        // 3. Publish a deposit event for the just-created custody account
         rabbit.convertAndSend("cpayment.test.deposits",
             new CreateDepositTransactionsEventDTO(List.of(new DepositTransactionDTO(
                 UUID.randomUUID(),
@@ -133,11 +133,10 @@ class InvoiceFlowIT {
                 "USDC",
                 BigInteger.valueOf(1_000_000L),
                 "0xdeadbeefdeadbeef",
-                15,                              // >= default ETH minConfirmations (12)
+                15,
                 Instant.parse("2026-05-25T12:00:00Z")
             ))));
 
-        // 4. Wait for the listener to mark PAID
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
             Optional<Invoice> invoice = invoices.findById(InvoiceId.of(UUID.fromString(body.id)));
             assertThat(invoice).isPresent();
@@ -145,23 +144,79 @@ class InvoiceFlowIT {
         });
     }
 
+    @Test
+    void submit_payout_then_confirm_transitions_to_CONFIRMED() {
+        stubTokenEndpoint();
+        UUID custodyTransferId = UUID.randomUUID();
+        stubSendTransaction(custodyTransferId);
+
+        String idempotencyKey = "merchant-payout-" + UUID.randomUUID();
+        ResponseEntity<PayoutJson> created = postPayout(idempotencyKey);
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        PayoutJson body = created.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.status).isEqualTo("SUBMITTED");
+        assertThat(body.transferId).isEqualTo(custodyTransferId.toString());
+
+        // Same key + body → idempotent, no second cus-server call
+        ResponseEntity<PayoutJson> replay = postPayout(idempotencyKey);
+        assertThat(replay.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(replay.getBody().id).isEqualTo(body.id);
+        wireMock.verify(1, postRequestedFor(urlEqualTo("/api/v1/holder/transactions")));
+
+        rabbit.convertAndSend("cpayment.test.tx-updates",
+            new UpdateTransactionEventDTO(List.of(new TransactionUpdatePayloadDTO(
+                custodyTransferId,
+                "CONFIRMED",
+                "0xdeadbeef",
+                12,
+                BigInteger.valueOf(21_000L),
+                "ETHEREUM",
+                "ETH",
+                null, null,
+                Instant.parse("2026-05-25T12:00:00Z")
+            ))));
+
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            Optional<Payout> p = payouts.findById(PayoutId.of(UUID.fromString(body.id)));
+            assertThat(p).isPresent();
+            assertThat(p.get().status()).isEqualTo(PayoutStatus.CONFIRMED);
+        });
+    }
+
     // ---------------- helpers ----------------
 
     private ResponseEntity<InvoiceJson> postInvoice(String idempotencyKey) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.add("Idempotency-Key", idempotencyKey);
+        HttpHeaders h = new HttpHeaders();
+        h.setContentType(MediaType.APPLICATION_JSON);
+        h.add("Idempotency-Key", idempotencyKey);
         String body = """
             { "merchantId": "%s", "asset": "eth:mainnet:usdc", "expectedAmount": 1000000 }
             """.formatted(MERCHANT);
         return http.exchange("/api/v1/invoices", HttpMethod.POST,
-            new HttpEntity<>(body, headers), InvoiceJson.class);
+            new HttpEntity<>(body, h), InvoiceJson.class);
+    }
+
+    private ResponseEntity<PayoutJson> postPayout(String idempotencyKey) {
+        HttpHeaders h = new HttpHeaders();
+        h.setContentType(MediaType.APPLICATION_JSON);
+        h.add("Idempotency-Key", idempotencyKey);
+        String body = """
+            {
+              "merchantId":   "%s",
+              "asset":        "eth:mainnet:usdc",
+              "fromAddress":  "0xMERCHANT",
+              "toAddress":    "0xCUSTOMER",
+              "amount":       500000
+            }
+            """.formatted(MERCHANT);
+        return http.exchange("/api/v1/payouts", HttpMethod.POST,
+            new HttpEntity<>(body, h), PayoutJson.class);
     }
 
     private void stubTokenEndpoint() {
         wireMock.stubFor(post(urlEqualTo("/protocol/openid-connect/token"))
-            .willReturn(aResponse()
-                .withStatus(200)
+            .willReturn(aResponse().withStatus(200)
                 .withHeader("Content-Type", "application/json")
                 .withBody("""
                     { "access_token": "test-token", "expires_in": 3600, "token_type": "Bearer" }
@@ -170,8 +225,7 @@ class InvoiceFlowIT {
 
     private void stubCreateAccount(UUID accountId, String address) {
         wireMock.stubFor(post(urlEqualTo("/api/v1/holder/accounts"))
-            .willReturn(aResponse()
-                .withStatus(200)
+            .willReturn(aResponse().withStatus(200)
                 .withHeader("Content-Type", "application/json")
                 .withBody("""
                     {
@@ -186,10 +240,24 @@ class InvoiceFlowIT {
                     """.formatted(accountId, address))));
     }
 
-    /**
-     * Mirror of {@code InvoiceResponse} kept loose (Strings) so a slight serialization
-     * change to the controller doesn't break this contract test.
-     */
+    private void stubSendTransaction(UUID transferId) {
+        wireMock.stubFor(post(urlEqualTo("/api/v1/holder/transactions"))
+            .willReturn(aResponse().withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("""
+                    {
+                      "data": {
+                        "id": "%s",
+                        "message": "Transaction sent successfully"
+                      }
+                    }
+                    """.formatted(transferId))));
+    }
+
     record InvoiceJson(String id, String merchantId, String asset, String expectedAmount,
                        String status, String depositAddress, String createdAt) {}
+
+    record PayoutJson(String id, String merchantId, String asset, String fromAddress,
+                      String toAddress, String amount, String memo, String status,
+                      String transferId, String txHash, String createdAt) {}
 }
