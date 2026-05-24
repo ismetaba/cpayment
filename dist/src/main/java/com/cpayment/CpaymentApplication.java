@@ -7,7 +7,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Import;
 
 @SpringBootApplication
-@Import({CusServerAutoConfiguration.class, PaymentAutoConfiguration.class})
+@Import({CusServerAutoConfiguration.class, PaymentAutoConfiguration.class, SecurityConfiguration.class})
 public class CpaymentApplication {
 
     public static void main(String[] args) {

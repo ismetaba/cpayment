@@ -14,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -32,6 +33,19 @@ public class ApiExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiError> onIllegalArg(IllegalArgumentException ex) {
         return ResponseEntity.badRequest().body(ApiError.of("BAD_REQUEST", ex.getMessage()));
+    }
+
+    /**
+     * @PathVariable / @RequestParam type binding failure (e.g. malformed UUID).
+     * Was falling through to the catch-all 500; now correctly returns 400.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiError> onTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        Class<?> expected = ex.getRequiredType();
+        String type = expected != null ? expected.getSimpleName() : "?";
+        return ResponseEntity.badRequest().body(ApiError.of(
+            "BAD_REQUEST",
+            "parameter '" + ex.getName() + "' must be a valid " + type));
     }
 
     @ExceptionHandler(IdempotencyConflictException.class)

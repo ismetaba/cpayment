@@ -51,6 +51,12 @@ cpayment:
         network: eth:mainnet
         wallet-id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
 
+cpayment:
+  security:
+    actuator:
+      username: ${ACTUATOR_USER:cpayment-ops}
+      password: ${ACTUATOR_PASS:change-me}
+
 springdoc:
   api-docs:
     path: /v3/api-docs
