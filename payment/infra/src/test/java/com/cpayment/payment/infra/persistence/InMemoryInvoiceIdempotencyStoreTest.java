@@ -104,6 +104,7 @@ class InMemoryInvoiceIdempotencyStoreTest {
             MerchantId.of(UUID.randomUUID()),
             new AssetId(new NetworkId("eth", "mainnet"), "usdc"),
             BigInteger.TEN,
+            12,
             AccountId.of(UUID.randomUUID()),
             "0xADDR",
             Instant.parse("2026-05-25T12:00:00Z")

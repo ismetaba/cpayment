@@ -133,7 +133,7 @@ class InvoiceFlowIT {
                 "USDC",
                 BigInteger.valueOf(1_000_000L),
                 "0xdeadbeefdeadbeef",
-                6,
+                15,                              // >= default ETH minConfirmations (12)
                 Instant.parse("2026-05-25T12:00:00Z")
             ))));
 

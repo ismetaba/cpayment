@@ -12,6 +12,7 @@ public record InvoiceResponse(
     UUID merchantId,
     String asset,
     BigInteger expectedAmount,
+    int minConfirmations,
     InvoiceStatus status,
     String depositAddress,
     Instant createdAt
@@ -23,6 +24,7 @@ public record InvoiceResponse(
             invoice.merchantId().value(),
             invoice.asset().canonical(),
             invoice.expectedAmount(),
+            invoice.minConfirmations(),
             invoice.status(),
             invoice.depositAddress(),
             invoice.createdAt()

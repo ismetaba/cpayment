@@ -10,7 +10,8 @@ public record CreateInvoiceCommand(
     IdempotencyKey idempotencyKey,
     MerchantId merchantId,
     AssetId asset,
-    BigInteger expectedAmount
+    BigInteger expectedAmount,
+    int minConfirmations
 ) {
 
     public CreateInvoiceCommand {
@@ -20,6 +21,9 @@ public record CreateInvoiceCommand(
         Objects.requireNonNull(expectedAmount, "expectedAmount");
         if (expectedAmount.signum() <= 0) {
             throw new IllegalArgumentException("expectedAmount must be positive");
+        }
+        if (minConfirmations < 1) {
+            throw new IllegalArgumentException("minConfirmations must be >= 1");
         }
     }
 }

@@ -106,6 +106,7 @@ public final class CreateInvoiceUseCase {
                 command.merchantId(),
                 command.asset(),
                 command.expectedAmount(),
+                command.minConfirmations(),
                 account.id(),
                 account.address(),
                 now

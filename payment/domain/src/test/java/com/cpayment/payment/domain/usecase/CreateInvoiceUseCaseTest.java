@@ -158,12 +158,12 @@ class CreateInvoiceUseCaseTest {
     }
 
     private CreateInvoiceCommand command(BigInteger amount) {
-        return new CreateInvoiceCommand(KEY, MERCHANT, USDC_ETH, amount);
+        return new CreateInvoiceCommand(KEY, MERCHANT, USDC_ETH, amount, 12);
     }
 
     private Invoice sampleInvoice() {
         return Invoice.newlyCreated(
-            InvoiceId.newId(), MERCHANT, USDC_ETH, BigInteger.valueOf(1_000_000),
+            InvoiceId.newId(), MERCHANT, USDC_ETH, BigInteger.valueOf(1_000_000), 12,
             AccountId.of(UUID.randomUUID()), "0xCACHED", FIXED_NOW);
     }
 

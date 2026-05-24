@@ -36,8 +36,8 @@ public class PaymentCustodyEventDispatcher implements CustodyEventSink {
     @Override
     public void accept(CustodyEventEnvelope envelope) {
         switch (envelope.event()) {
-            case CustodyEvent.DepositDetected e   -> recordDeposit.handle(e);
-            case CustodyEvent.DepositConfirmed e  -> noteUnhandled("DepositConfirmed", envelope);
+            case CustodyEvent.DepositDetected e   -> recordDeposit.onDetected(e);
+            case CustodyEvent.DepositConfirmed e  -> recordDeposit.onConfirmed(e);
             case CustodyEvent.TransferBroadcast e -> noteUnhandled("TransferBroadcast", envelope);
             case CustodyEvent.TransferConfirmed e -> noteUnhandled("TransferConfirmed", envelope);
             case CustodyEvent.TransferFailed e    -> noteUnhandled("TransferFailed", envelope);

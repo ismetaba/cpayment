@@ -31,7 +31,8 @@ import static org.mockito.Mockito.when;
 class RecordDepositUseCaseTest {
 
     private static final AssetId USDC_ETH = new AssetId(new NetworkId("eth", "mainnet"), "usdc");
-    private static final Instant FIXED_NOW = Instant.parse("2026-05-24T12:00:00Z");
+    private static final Instant FIXED_NOW = Instant.parse("2026-05-25T12:00:00Z");
+    private static final int MIN_CONFIRMATIONS = 12;
 
     private InvoiceRepository invoices;
     private RecordDepositUseCase useCase;
@@ -44,53 +45,85 @@ class RecordDepositUseCaseTest {
     }
 
     @Test
-    void marks_invoice_paid_when_amount_meets_expected() {
+    void detected_with_low_confirmations_moves_invoice_to_DETECTED() {
         Invoice invoice = awaitingDeposit(BigInteger.valueOf(1_000_000));
         when(invoices.findByCustodyAccount(invoice.custodyAccount())).thenReturn(Optional.of(invoice));
 
-        useCase.handle(deposit(invoice, BigInteger.valueOf(1_000_000)));
+        useCase.onDetected(detected(invoice, BigInteger.valueOf(1_000_000), 3));
 
-        ArgumentCaptor<Invoice> savedCaptor = ArgumentCaptor.forClass(Invoice.class);
-        verify(invoices).save(savedCaptor.capture());
-        Invoice saved = savedCaptor.getValue();
-        assertThat(saved.status()).isEqualTo(InvoiceStatus.PAID);
-        assertThat(saved.receivedAmount()).contains(BigInteger.valueOf(1_000_000));
-        assertThat(saved.receivedTxHash()).contains("0xdeadbeef");
-        assertThat(saved.updatedAt()).isEqualTo(FIXED_NOW);
+        Invoice saved = captureSaved();
+        assertThat(saved.status()).isEqualTo(InvoiceStatus.DETECTED);
+        assertThat(saved.receivedConfirmations()).contains(3);
     }
 
     @Test
-    void marks_invoice_underpaid_when_amount_is_short() {
+    void detected_with_sufficient_confirmations_jumps_to_PAID() {
         Invoice invoice = awaitingDeposit(BigInteger.valueOf(1_000_000));
         when(invoices.findByCustodyAccount(invoice.custodyAccount())).thenReturn(Optional.of(invoice));
 
-        useCase.handle(deposit(invoice, BigInteger.valueOf(999_999)));
+        useCase.onDetected(detected(invoice, BigInteger.valueOf(1_000_000), MIN_CONFIRMATIONS));
 
-        ArgumentCaptor<Invoice> savedCaptor = ArgumentCaptor.forClass(Invoice.class);
-        verify(invoices).save(savedCaptor.capture());
-        assertThat(savedCaptor.getValue().status()).isEqualTo(InvoiceStatus.UNDERPAID);
+        assertThat(captureSaved().status()).isEqualTo(InvoiceStatus.PAID);
     }
 
     @Test
-    void drops_orphan_deposit_without_saving() {
+    void confirmed_event_marks_invoice_PAID_even_when_previously_DETECTED() {
+        Invoice detected = awaitingDeposit(BigInteger.valueOf(1_000_000))
+            .markDetected("0xprev", BigInteger.valueOf(1_000_000), 3, FIXED_NOW.minusSeconds(60));
+        when(invoices.findByCustodyAccount(detected.custodyAccount())).thenReturn(Optional.of(detected));
+
+        useCase.onConfirmed(confirmed(detected, BigInteger.valueOf(1_000_000), MIN_CONFIRMATIONS));
+
+        assertThat(captureSaved().status()).isEqualTo(InvoiceStatus.PAID);
+    }
+
+    @Test
+    void underpayment_short_circuits_to_UNDERPAID_regardless_of_confirmations() {
+        Invoice invoice = awaitingDeposit(BigInteger.valueOf(1_000_000));
+        when(invoices.findByCustodyAccount(invoice.custodyAccount())).thenReturn(Optional.of(invoice));
+
+        useCase.onDetected(detected(invoice, BigInteger.valueOf(999_999), MIN_CONFIRMATIONS));
+
+        assertThat(captureSaved().status()).isEqualTo(InvoiceStatus.UNDERPAID);
+    }
+
+    @Test
+    void orphan_deposit_is_dropped() {
         when(invoices.findByCustodyAccount(any(AccountId.class))).thenReturn(Optional.empty());
 
-        useCase.handle(new CustodyEvent.DepositDetected(
+        useCase.onDetected(new CustodyEvent.DepositDetected(
             AccountId.of(UUID.randomUUID()), "0xFROM", USDC_ETH,
-            BigInteger.TEN, "0xdeadbeef", 1));
+            BigInteger.TEN, "0xdead", 1));
 
         verify(invoices, never()).save(any(Invoice.class));
     }
 
     @Test
-    void ignores_redelivered_event_when_invoice_already_paid() {
+    void terminal_invoice_ignores_redelivered_event() {
         Invoice paid = awaitingDeposit(BigInteger.TEN)
-            .markPaid("0xprev", BigInteger.TEN, FIXED_NOW.minusSeconds(60));
+            .markPaid("0xprev", BigInteger.TEN, MIN_CONFIRMATIONS, FIXED_NOW.minusSeconds(60));
         when(invoices.findByCustodyAccount(paid.custodyAccount())).thenReturn(Optional.of(paid));
 
-        useCase.handle(deposit(paid, BigInteger.TEN));
+        useCase.onDetected(detected(paid, BigInteger.TEN, MIN_CONFIRMATIONS));
 
         verify(invoices, never()).save(any(Invoice.class));
+    }
+
+    @Test
+    void duplicate_DETECTED_at_same_depth_does_not_resave() {
+        Invoice already = awaitingDeposit(BigInteger.valueOf(1_000_000))
+            .markDetected("0xtx", BigInteger.valueOf(1_000_000), 3, FIXED_NOW.minusSeconds(60));
+        when(invoices.findByCustodyAccount(already.custodyAccount())).thenReturn(Optional.of(already));
+
+        useCase.onDetected(detected(already, BigInteger.valueOf(1_000_000), 3));
+
+        verify(invoices, never()).save(any(Invoice.class));
+    }
+
+    private Invoice captureSaved() {
+        ArgumentCaptor<Invoice> c = ArgumentCaptor.forClass(Invoice.class);
+        verify(invoices).save(c.capture());
+        return c.getValue();
     }
 
     private static Invoice awaitingDeposit(BigInteger expected) {
@@ -99,14 +132,20 @@ class RecordDepositUseCaseTest {
             MerchantId.of(UUID.randomUUID()),
             USDC_ETH,
             expected,
+            MIN_CONFIRMATIONS,
             AccountId.of(UUID.randomUUID()),
             "0xADDRESS",
             FIXED_NOW.minusSeconds(120)
         );
     }
 
-    private static CustodyEvent.DepositDetected deposit(Invoice invoice, BigInteger amount) {
+    private static CustodyEvent.DepositDetected detected(Invoice invoice, BigInteger amount, int conf) {
         return new CustodyEvent.DepositDetected(
-            invoice.custodyAccount(), "0xFROM", invoice.asset(), amount, "0xdeadbeef", 1);
+            invoice.custodyAccount(), "0xFROM", invoice.asset(), amount, "0xdead", conf);
+    }
+
+    private static CustodyEvent.DepositConfirmed confirmed(Invoice invoice, BigInteger amount, int conf) {
+        return new CustodyEvent.DepositConfirmed(
+            invoice.custodyAccount(), "0xFROM", invoice.asset(), amount, "0xdead", conf);
     }
 }
