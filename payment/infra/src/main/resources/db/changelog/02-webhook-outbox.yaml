@@ -1,0 +1,25 @@
+databaseChangeLog:
+  - changeSet:
+      id: 3-create-webhook-outbox
+      author: cpayment
+      changes:
+        - createTable:
+            tableName: cpayment_webhook_outbox
+            columns:
+              - column: { name: id,              type: UUID,         constraints: { primaryKey: true, nullable: false } }
+              - column: { name: invoice_id,      type: UUID,         constraints: { nullable: false } }
+              - column: { name: merchant_id,     type: UUID,         constraints: { nullable: false } }
+              - column: { name: event_type,      type: VARCHAR(40),  constraints: { nullable: false } }
+              - column: { name: payload,         type: CLOB,         constraints: { nullable: false } }
+              - column: { name: status,          type: VARCHAR(16),  constraints: { nullable: false } }
+              - column: { name: attempts,        type: INT,          constraints: { nullable: false } }
+              - column: { name: next_attempt_at, type: TIMESTAMP,    constraints: { nullable: false } }
+              - column: { name: last_error,      type: VARCHAR(500) }
+              - column: { name: created_at,      type: TIMESTAMP,    constraints: { nullable: false } }
+              - column: { name: updated_at,      type: TIMESTAMP,    constraints: { nullable: false } }
+        - createIndex:
+            tableName: cpayment_webhook_outbox
+            indexName: idx_outbox_dispatch
+            columns:
+              - column: { name: status }
+              - column: { name: next_attempt_at }

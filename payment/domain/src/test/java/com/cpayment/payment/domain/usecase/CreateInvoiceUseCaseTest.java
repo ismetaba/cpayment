@@ -16,7 +16,7 @@ import com.cpayment.payment.domain.model.InvoiceId;
 import com.cpayment.payment.domain.model.InvoiceStatus;
 import com.cpayment.payment.domain.model.MerchantId;
 import com.cpayment.payment.domain.port.InvoiceIdempotencyStore;
-import com.cpayment.payment.domain.port.InvoiceRepository;
+import com.cpayment.payment.domain.port.InvoiceMutationGateway;
 import com.cpayment.payment.domain.port.MerchantWalletResolver;
 import com.cpayment.payment.domain.port.NoOpPaymentMetrics;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,7 +48,7 @@ class CreateInvoiceUseCaseTest {
     private static final IdempotencyKey KEY = IdempotencyKey.of("merchant-order-42");
     private static final Instant FIXED_NOW = Instant.parse("2026-05-25T12:00:00Z");
 
-    private InvoiceRepository invoices;
+    private InvoiceMutationGateway gateway;
     private InvoiceIdempotencyStore idempotency;
     private MerchantWalletResolver walletResolver;
     private AccountPort accounts;
@@ -56,13 +56,13 @@ class CreateInvoiceUseCaseTest {
 
     @BeforeEach
     void setUp() {
-        invoices = mock(InvoiceRepository.class);
+        gateway = mock(InvoiceMutationGateway.class);
         idempotency = mock(InvoiceIdempotencyStore.class);
         walletResolver = mock(MerchantWalletResolver.class);
         accounts = mock(AccountPort.class);
         Clock clock = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
         useCase = new CreateInvoiceUseCase(
-            invoices, idempotency, walletResolver, accounts, NoOpPaymentMetrics.INSTANCE, clock);
+            gateway, idempotency, walletResolver, accounts, NoOpPaymentMetrics.INSTANCE, clock);
     }
 
     @Test
@@ -92,7 +92,7 @@ class CreateInvoiceUseCaseTest {
         assertThat(cmdCaptor.getValue().walletId()).isEqualTo(WALLET);
         assertThat(cmdCaptor.getValue().supportedAssetSymbols()).containsExactly("usdc");
 
-        verify(invoices).save(invoice);
+        verify(gateway).apply(eq(invoice), any());
         verify(idempotency).completeClaim(eq(KEY), any(String.class), eq(invoice));
         verify(idempotency, never()).releaseClaim(any(), any());
     }
@@ -106,7 +106,7 @@ class CreateInvoiceUseCaseTest {
 
         assertThat(result.invoice()).isEqualTo(cached);
         verifyNoInteractions(walletResolver, accounts);
-        verify(invoices, never()).save(any());
+        verifyNoInteractions(gateway);
         verify(idempotency, never()).completeClaim(any(), any(), any());
         verify(idempotency, never()).releaseClaim(any(), any());
     }
@@ -120,7 +120,7 @@ class CreateInvoiceUseCaseTest {
             .isInstanceOf(IdempotencyConflictException.class);
 
         verifyNoInteractions(walletResolver, accounts);
-        verify(invoices, never()).save(any());
+        verifyNoInteractions(gateway);
         verify(idempotency, never()).releaseClaim(any(), any());
     }
 
@@ -133,7 +133,7 @@ class CreateInvoiceUseCaseTest {
         assertThatThrownBy(() -> useCase.execute(command(BigInteger.valueOf(1_000_000))))
             .isInstanceOf(RuntimeException.class);
 
-        verify(invoices, never()).save(any());
+        verifyNoInteractions(gateway);
         verify(idempotency).releaseClaim(eq(KEY), any(String.class));
         verify(idempotency, never()).completeClaim(any(), any(), any());
     }
@@ -146,7 +146,7 @@ class CreateInvoiceUseCaseTest {
             AccountId.of(UUID.randomUUID()), Optional.of(WALLET), USDC_ETH.network(),
             "0xORPHAN", "invoice-x", Set.of("USDC")));
         org.mockito.Mockito.doThrow(new RuntimeException("db down"))
-            .when(invoices).save(any());
+            .when(gateway).apply(any(), any());
 
         assertThatThrownBy(() -> useCase.execute(command(BigInteger.valueOf(1_000_000))))
             .isInstanceOf(RuntimeException.class);

@@ -1,3 +1,5 @@
 databaseChangeLog:
   - include:
       file: db/changelog/01-init.yaml
+  - include:
+      file: db/changelog/02-webhook-outbox.yaml

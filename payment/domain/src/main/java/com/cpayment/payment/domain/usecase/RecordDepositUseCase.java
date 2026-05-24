@@ -4,6 +4,9 @@ import com.cpayment.custody.domain.event.CustodyEvent;
 import com.cpayment.custody.domain.model.AccountId;
 import com.cpayment.custody.domain.model.AssetId;
 import com.cpayment.payment.domain.model.Invoice;
+import com.cpayment.payment.domain.model.InvoiceEvent;
+import com.cpayment.payment.domain.model.InvoiceEventType;
+import com.cpayment.payment.domain.port.InvoiceMutationGateway;
 import com.cpayment.payment.domain.port.InvoiceRepository;
 import com.cpayment.payment.domain.port.PaymentMetrics;
 import org.slf4j.Logger;
@@ -12,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import java.math.BigInteger;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -37,11 +41,16 @@ public final class RecordDepositUseCase {
     private static final Logger log = LoggerFactory.getLogger(RecordDepositUseCase.class);
 
     private final InvoiceRepository invoices;
+    private final InvoiceMutationGateway gateway;
     private final PaymentMetrics metrics;
     private final Clock clock;
 
-    public RecordDepositUseCase(InvoiceRepository invoices, PaymentMetrics metrics, Clock clock) {
+    public RecordDepositUseCase(InvoiceRepository invoices,
+                                InvoiceMutationGateway gateway,
+                                PaymentMetrics metrics,
+                                Clock clock) {
         this.invoices = Objects.requireNonNull(invoices, "invoices");
+        this.gateway = Objects.requireNonNull(gateway, "gateway");
         this.metrics = Objects.requireNonNull(metrics, "metrics");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
@@ -86,7 +95,7 @@ public final class RecordDepositUseCase {
             return;
         }
 
-        invoices.save(updated);
+        gateway.apply(updated, eventsForTransition(invoice, updated));
         recordMetric(invoice, updated);
 
         log.info("deposit.progress invoice={} merchant={} status={}->{} expected={} received={} conf={}/{} txHash={}",
@@ -114,5 +123,15 @@ public final class RecordDepositUseCase {
             case UNDERPAID -> metrics.depositUnderpaid(after.asset());
             default        -> { /* DETECTED has no dedicated counter yet. */ }
         }
+    }
+
+    private List<InvoiceEvent> eventsForTransition(Invoice before, Invoice after) {
+        if (before.status() == after.status()) return List.of();
+        return switch (after.status()) {
+            case PAID      -> List.of(InvoiceEvent.of(InvoiceEventType.INVOICE_PAID, after));
+            case UNDERPAID -> List.of(InvoiceEvent.of(InvoiceEventType.INVOICE_UNDERPAID, after));
+            case DETECTED  -> List.of(InvoiceEvent.of(InvoiceEventType.INVOICE_DETECTED, after));
+            default        -> List.of();
+        };
     }
 }

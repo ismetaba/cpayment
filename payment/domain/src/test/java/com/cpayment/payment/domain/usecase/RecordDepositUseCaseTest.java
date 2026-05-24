@@ -8,6 +8,7 @@ import com.cpayment.payment.domain.model.Invoice;
 import com.cpayment.payment.domain.model.InvoiceId;
 import com.cpayment.payment.domain.model.InvoiceStatus;
 import com.cpayment.payment.domain.model.MerchantId;
+import com.cpayment.payment.domain.port.InvoiceMutationGateway;
 import com.cpayment.payment.domain.port.InvoiceRepository;
 import com.cpayment.payment.domain.port.NoOpPaymentMetrics;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,13 +36,15 @@ class RecordDepositUseCaseTest {
     private static final int MIN_CONFIRMATIONS = 12;
 
     private InvoiceRepository invoices;
+    private InvoiceMutationGateway gateway;
     private RecordDepositUseCase useCase;
 
     @BeforeEach
     void setUp() {
         invoices = mock(InvoiceRepository.class);
+        gateway = mock(InvoiceMutationGateway.class);
         useCase = new RecordDepositUseCase(
-            invoices, NoOpPaymentMetrics.INSTANCE, Clock.fixed(FIXED_NOW, ZoneOffset.UTC));
+            invoices, gateway, NoOpPaymentMetrics.INSTANCE, Clock.fixed(FIXED_NOW, ZoneOffset.UTC));
     }
 
     @Test
@@ -95,7 +98,7 @@ class RecordDepositUseCaseTest {
             AccountId.of(UUID.randomUUID()), "0xFROM", USDC_ETH,
             BigInteger.TEN, "0xdead", 1));
 
-        verify(invoices, never()).save(any(Invoice.class));
+verify(gateway, never()).apply(any(), any());
     }
 
     @Test
@@ -106,7 +109,7 @@ class RecordDepositUseCaseTest {
 
         useCase.onDetected(detected(paid, BigInteger.TEN, MIN_CONFIRMATIONS));
 
-        verify(invoices, never()).save(any(Invoice.class));
+verify(gateway, never()).apply(any(), any());
     }
 
     @Test
@@ -117,12 +120,12 @@ class RecordDepositUseCaseTest {
 
         useCase.onDetected(detected(already, BigInteger.valueOf(1_000_000), 3));
 
-        verify(invoices, never()).save(any(Invoice.class));
+verify(gateway, never()).apply(any(), any());
     }
 
     private Invoice captureSaved() {
         ArgumentCaptor<Invoice> c = ArgumentCaptor.forClass(Invoice.class);
-        verify(invoices).save(c.capture());
+        verify(gateway).apply(c.capture(), any());
         return c.getValue();
     }
 

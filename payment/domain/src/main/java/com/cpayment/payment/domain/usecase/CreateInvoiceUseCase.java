@@ -7,9 +7,11 @@ import com.cpayment.custody.domain.port.AccountPort;
 import com.cpayment.payment.domain.model.CreateInvoiceCommand;
 import com.cpayment.payment.domain.model.Invoice;
 import com.cpayment.payment.domain.model.InvoiceCreatedResult;
+import com.cpayment.payment.domain.model.InvoiceEvent;
+import com.cpayment.payment.domain.model.InvoiceEventType;
 import com.cpayment.payment.domain.model.InvoiceId;
 import com.cpayment.payment.domain.port.InvoiceIdempotencyStore;
-import com.cpayment.payment.domain.port.InvoiceRepository;
+import com.cpayment.payment.domain.port.InvoiceMutationGateway;
 import com.cpayment.payment.domain.port.MerchantWalletResolver;
 import com.cpayment.payment.domain.port.PaymentMetrics;
 import org.slf4j.Logger;
@@ -17,6 +19,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -42,20 +45,20 @@ public final class CreateInvoiceUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(CreateInvoiceUseCase.class);
 
-    private final InvoiceRepository invoices;
+    private final InvoiceMutationGateway gateway;
     private final InvoiceIdempotencyStore idempotency;
     private final MerchantWalletResolver merchantWallets;
     private final AccountPort custodyAccounts;
     private final PaymentMetrics metrics;
     private final Clock clock;
 
-    public CreateInvoiceUseCase(InvoiceRepository invoices,
+    public CreateInvoiceUseCase(InvoiceMutationGateway gateway,
                                 InvoiceIdempotencyStore idempotency,
                                 MerchantWalletResolver merchantWallets,
                                 AccountPort custodyAccounts,
                                 PaymentMetrics metrics,
                                 Clock clock) {
-        this.invoices = Objects.requireNonNull(invoices, "invoices");
+        this.gateway = Objects.requireNonNull(gateway, "gateway");
         this.idempotency = Objects.requireNonNull(idempotency, "idempotency");
         this.merchantWallets = Objects.requireNonNull(merchantWallets, "merchantWallets");
         this.custodyAccounts = Objects.requireNonNull(custodyAccounts, "custodyAccounts");
@@ -112,7 +115,7 @@ public final class CreateInvoiceUseCase {
                 now
             );
 
-            invoices.save(invoice);
+            gateway.apply(invoice, List.of(InvoiceEvent.of(InvoiceEventType.INVOICE_CREATED, invoice)));
             idempotency.completeClaim(command.idempotencyKey(), requestHash, invoice);
             metrics.invoiceCreated(command.asset());
 
