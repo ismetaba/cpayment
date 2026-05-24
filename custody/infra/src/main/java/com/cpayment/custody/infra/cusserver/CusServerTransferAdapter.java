@@ -76,7 +76,11 @@ public class CusServerTransferAdapter implements TransferPort {
     @Override
     public TransferId sendTransfer(SendTransferCommand cmd) {
         String hash = TransferRequestHash.of(cmd);
-        Optional<TransferId> cached = idempotency.findByKey(cmd.idempotencyKey(), hash);
+
+        // Phase 1: claim BEFORE side effect. If the COMPLETED record exists, return its
+        // TransferId without re-calling cus-server. If a concurrent / crashed PENDING
+        // claim exists, throw IdempotencyInProgressException — the caller must back off.
+        Optional<TransferId> cached = idempotency.beginClaim(cmd.idempotencyKey(), hash);
         if (cached.isPresent()) {
             log.info("transfer.idempotent-hit key={} transferId={}",
                      cmd.idempotencyKey().value(), cached.get().value());
@@ -98,16 +102,24 @@ public class CusServerTransferAdapter implements TransferPort {
             null   // networkSpecificParams — extend later for UTXO/Tron
         );
 
-        CusResponse<SendTransactionResponseDTO> response = resilient.write(
-            "sendTransfer",
-            () -> post("/api/v1/holder/transactions", body, new ParameterizedTypeReference<>() {}));
+        SendTransactionResponseDTO data;
+        try {
+            CusResponse<SendTransactionResponseDTO> response = resilient.write(
+                "sendTransfer",
+                () -> post("/api/v1/holder/transactions", body, new ParameterizedTypeReference<>() {}));
+            data = requireData(response, "sendTransfer");
+        } catch (RuntimeException preSideEffect) {
+            // cus-server did NOT accept the request → safe to release the claim so a
+            // retry with a fresh body or a recovered backend can proceed.
+            idempotency.releaseClaim(cmd.idempotencyKey(), hash);
+            throw preSideEffect;
+        }
 
-        SendTransactionResponseDTO data = requireData(response, "sendTransfer");
+        // cus-server accepted; from here we must NEVER release the claim, even if
+        // completeClaim itself fails. A retry then sees PENDING (in-progress) instead of
+        // re-sending, which is strictly better than creating a duplicate transfer.
         TransferId transferId = TransferId.of(data.id());
-
-        // Record AFTER the side effect succeeds. A crash here means the next retry will
-        // re-send and create a duplicate — see class javadoc.
-        idempotency.record(cmd.idempotencyKey(), hash, transferId);
+        idempotency.completeClaim(cmd.idempotencyKey(), hash, transferId);
         return transferId;
     }
 
