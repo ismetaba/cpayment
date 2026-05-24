@@ -1,0 +1,31 @@
+server:
+  port: 0
+
+cpayment:
+  custody:
+    cusserver:
+      base-url: http://localhost:0     # overridden by @DynamicPropertySource
+      holder-jwt-issuer-url: http://localhost:0
+      holder-client-id: cpayment-holder
+      holder-client-secret: test-secret
+      timeouts:
+        connect: PT2S
+        read: PT5S
+      rabbit:
+        host: localhost
+        port: 5672
+        virtual-host: /
+        username: guest
+        password: guest
+        create-deposit-queue: cpayment.test.deposits
+        update-transaction-queue: cpayment.test.tx-updates
+  payment:
+    merchant-wallets:
+      - merchant-id: 11111111-1111-1111-1111-111111111111
+        network: eth:mainnet
+        wallet-id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
+
+logging:
+  level:
+    com.cpayment: DEBUG
+    org.springframework.amqp: WARN

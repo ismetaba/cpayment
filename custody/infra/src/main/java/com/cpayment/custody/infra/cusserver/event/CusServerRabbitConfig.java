@@ -3,6 +3,7 @@ package com.cpayment.custody.infra.cusserver.event;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.DefaultJackson2JavaTypeMapper;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
@@ -45,5 +46,18 @@ public class CusServerRabbitConfig {
         configurer.configure(factory, connectionFactory);
         factory.setMessageConverter(cusServerJsonMessageConverter);
         return factory;
+    }
+
+    /**
+     * Pin the {@link RabbitTemplate} to the same Jackson converter so producers (including
+     * tests and any future cpayment-side publishers) speak the same wire format as the
+     * listeners consume.
+     */
+    @Bean
+    public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory,
+                                         MessageConverter cusServerJsonMessageConverter) {
+        RabbitTemplate template = new RabbitTemplate(connectionFactory);
+        template.setMessageConverter(cusServerJsonMessageConverter);
+        return template;
     }
 }
