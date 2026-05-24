@@ -58,11 +58,39 @@ All four overridable through env vars (`CUS_BASE_URL`, `CUS_RABBIT_HOST`,
 java -jar dist/target/cpayment.jar
 ```
 
+## Endpoints
+
+```
+POST  /api/v1/invoices       Idempotency-Key required → 201 + Location
+GET   /api/v1/invoices/{id}                            → 200 | 404
+POST  /api/v1/payouts        Idempotency-Key required → 201 + Location
+GET   /api/v1/payouts/{id}                             → 200 | 404
+GET   /actuator/{health,info,metrics,prometheus}
+GET   /swagger-ui.html       interactive OpenAPI 3 UI
+GET   /v3/api-docs           raw OpenAPI 3 spec (merchant API only)
+```
+
 `POST /api/v1/invoices` with header `Idempotency-Key: <unique>` and body:
 
 ```json
 { "merchantId": "...", "asset": "eth:mainnet:usdc", "expectedAmount": 1000000 }
 ```
+
+`POST /api/v1/payouts` with header `Idempotency-Key: <unique>` and body:
+
+```json
+{
+  "merchantId":  "...",
+  "asset":       "eth:mainnet:usdc",
+  "fromAddress": "0x...",
+  "toAddress":   "0x...",
+  "amount":      500000
+}
+```
+
+Merchants receive `X-Cpayment-Signature` HMAC-SHA256-signed webhooks for
+invoice and payout lifecycle events (see `PayoutWebhookPayload` /
+`WebhookPayload` for the wire shape).
 
 ## Repository
 

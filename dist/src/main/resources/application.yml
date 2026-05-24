@@ -51,6 +51,14 @@ cpayment:
         network: eth:mainnet
         wallet-id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
 
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: alpha
+    tagsSorter: alpha
+
 management:
   endpoints:
     web:
