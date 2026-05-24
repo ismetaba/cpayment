@@ -1,29 +1,44 @@
 package com.cpayment.payment.domain.port;
 
+import com.cpayment.core.exception.IdempotencyConflictException;
+import com.cpayment.core.exception.IdempotencyInProgressException;
 import com.cpayment.core.model.IdempotencyKey;
 import com.cpayment.payment.domain.model.Invoice;
 
 import java.util.Optional;
 
 /**
- * Outbound port — caches the result of a successful invoice creation against a
- * client-supplied idempotency key.
+ * Two-phase idempotency store. The pattern closes the orphan-account crash window:
+ * the claim is recorded BEFORE the side-effecting custody call, so a process restart
+ * between the custody success and the local invoice save does NOT cause a retry to
+ * create a second custody account.
  *
- * <h2>Contract</h2>
- * <ul>
- *   <li>{@link #findExisting} returns the cached {@link Invoice} only when the
- *       caller-presented {@code requestHash} matches the originally-recorded one.
- *       A mismatch must raise
- *       {@link com.cpayment.core.exception.IdempotencyConflictException}
- *       — clients that re-use a key with a different payload are buggy and must be told.</li>
- *   <li>{@link #record} stores the (key, hash, invoice) tuple atomically. Implementations
- *       MUST detect concurrent inserts and either return the existing record or fail with
- *       a conflict exception to prevent two invoices from sharing a key.</li>
- * </ul>
+ * <h2>Lifecycle</h2>
+ * <ol>
+ *   <li>{@link #beginClaim} — atomic. Either returns a cached invoice (already COMPLETED),
+ *       or claims the key in PENDING state and returns {@link Optional#empty()}.</li>
+ *   <li>The caller does its side-effecting work.</li>
+ *   <li>On success: {@link #completeClaim} transitions PENDING → COMPLETED.</li>
+ *   <li>On failure BEFORE side-effects: {@link #releaseClaim} removes the PENDING entry
+ *       so retries are unblocked.</li>
+ *   <li>On failure AFTER side-effects: the caller must NOT release. The claim stays
+ *       PENDING; subsequent retries get {@link IdempotencyInProgressException} until an
+ *       operator reconciles.</li>
+ * </ol>
+ *
+ * <h2>Concurrency</h2>
+ * <p>{@code beginClaim} must be linearizable — concurrent calls with the same key see
+ * at most one winner; losers observe the winner's state (Pending or Completed) and react.
+ *
+ * @throws IdempotencyConflictException if the key was previously used with a different
+ *         request payload.
+ * @throws IdempotencyInProgressException if the key is currently claimed (Pending).
  */
 public interface InvoiceIdempotencyStore {
 
-    Optional<Invoice> findExisting(IdempotencyKey key, String requestHash);
+    Optional<Invoice> beginClaim(IdempotencyKey key, String requestHash);
 
-    void record(IdempotencyKey key, String requestHash, Invoice invoice);
+    void completeClaim(IdempotencyKey key, String requestHash, Invoice invoice);
+
+    void releaseClaim(IdempotencyKey key, String requestHash);
 }

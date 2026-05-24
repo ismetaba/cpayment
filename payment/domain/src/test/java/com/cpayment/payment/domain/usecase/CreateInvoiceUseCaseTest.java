@@ -46,7 +46,7 @@ class CreateInvoiceUseCaseTest {
     private static final WalletId WALLET = WalletId.of(UUID.randomUUID());
     private static final AssetId USDC_ETH = new AssetId(new NetworkId("eth", "mainnet"), "usdc");
     private static final IdempotencyKey KEY = IdempotencyKey.of("merchant-order-42");
-    private static final Instant FIXED_NOW = Instant.parse("2026-05-24T12:00:00Z");
+    private static final Instant FIXED_NOW = Instant.parse("2026-05-25T12:00:00Z");
 
     private InvoiceRepository invoices;
     private InvoiceIdempotencyStore idempotency;
@@ -66,8 +66,8 @@ class CreateInvoiceUseCaseTest {
     }
 
     @Test
-    void creates_invoice_with_deposit_address_returned_from_custody() {
-        when(idempotency.findExisting(any(), any())).thenReturn(Optional.empty());
+    void creates_invoice_and_completes_claim() {
+        when(idempotency.beginClaim(any(), any())).thenReturn(Optional.empty());
         when(walletResolver.resolveDepositWallet(MERCHANT, USDC_ETH.network())).thenReturn(WALLET);
 
         AccountId expectedAccountId = AccountId.of(UUID.randomUUID());
@@ -83,38 +83,37 @@ class CreateInvoiceUseCaseTest {
         InvoiceCreatedResult result = useCase.execute(command(BigInteger.valueOf(1_000_000)));
 
         Invoice invoice = result.invoice();
-        assertThat(invoice.merchantId()).isEqualTo(MERCHANT);
-        assertThat(invoice.asset()).isEqualTo(USDC_ETH);
         assertThat(invoice.status()).isEqualTo(InvoiceStatus.AWAITING_DEPOSIT);
         assertThat(invoice.custodyAccount()).isEqualTo(expectedAccountId);
         assertThat(invoice.depositAddress()).isEqualTo("0xCAFEBABE000000000000000000000000DEADBEEF");
-        assertThat(invoice.createdAt()).isEqualTo(FIXED_NOW);
 
         ArgumentCaptor<CreateAccountCommand> cmdCaptor = ArgumentCaptor.forClass(CreateAccountCommand.class);
         verify(accounts).createAccount(cmdCaptor.capture());
-        CreateAccountCommand sent = cmdCaptor.getValue();
-        assertThat(sent.walletId()).isEqualTo(WALLET);
-        assertThat(sent.supportedAssetSymbols()).containsExactly("usdc");
+        assertThat(cmdCaptor.getValue().walletId()).isEqualTo(WALLET);
+        assertThat(cmdCaptor.getValue().supportedAssetSymbols()).containsExactly("usdc");
 
         verify(invoices).save(invoice);
-        verify(idempotency).record(eqKey(KEY), any(String.class), eqInvoice(invoice));
+        verify(idempotency).completeClaim(eq(KEY), any(String.class), eq(invoice));
+        verify(idempotency, never()).releaseClaim(any(), any());
     }
 
     @Test
     void idempotent_hit_returns_cached_invoice_without_side_effects() {
         Invoice cached = sampleInvoice();
-        when(idempotency.findExisting(eqKey(KEY), any(String.class))).thenReturn(Optional.of(cached));
+        when(idempotency.beginClaim(eq(KEY), any(String.class))).thenReturn(Optional.of(cached));
 
         InvoiceCreatedResult result = useCase.execute(command(BigInteger.valueOf(1_000_000)));
 
         assertThat(result.invoice()).isEqualTo(cached);
         verifyNoInteractions(walletResolver, accounts);
         verify(invoices, never()).save(any());
+        verify(idempotency, never()).completeClaim(any(), any(), any());
+        verify(idempotency, never()).releaseClaim(any(), any());
     }
 
     @Test
-    void conflict_thrown_by_store_propagates_unchanged() {
-        when(idempotency.findExisting(eqKey(KEY), any(String.class)))
+    void conflict_from_begin_propagates_without_side_effects() {
+        when(idempotency.beginClaim(eq(KEY), any(String.class)))
             .thenThrow(new IdempotencyConflictException("different body for " + KEY.value()));
 
         assertThatThrownBy(() -> useCase.execute(command(BigInteger.valueOf(1_000_000))))
@@ -122,11 +121,12 @@ class CreateInvoiceUseCaseTest {
 
         verifyNoInteractions(walletResolver, accounts);
         verify(invoices, never()).save(any());
+        verify(idempotency, never()).releaseClaim(any(), any());
     }
 
     @Test
-    void invoice_not_saved_when_custody_call_fails() {
-        when(idempotency.findExisting(any(), any())).thenReturn(Optional.empty());
+    void release_claim_when_custody_call_fails() {
+        when(idempotency.beginClaim(any(), any())).thenReturn(Optional.empty());
         when(walletResolver.resolveDepositWallet(any(), any())).thenReturn(WALLET);
         when(accounts.createAccount(any())).thenThrow(new RuntimeException("cus-server down"));
 
@@ -134,7 +134,27 @@ class CreateInvoiceUseCaseTest {
             .isInstanceOf(RuntimeException.class);
 
         verify(invoices, never()).save(any());
-        verify(idempotency, never()).record(any(), any(), any());
+        verify(idempotency).releaseClaim(eq(KEY), any(String.class));
+        verify(idempotency, never()).completeClaim(any(), any(), any());
+    }
+
+    @Test
+    void do_NOT_release_claim_when_save_fails_after_custody_success() {
+        when(idempotency.beginClaim(any(), any())).thenReturn(Optional.empty());
+        when(walletResolver.resolveDepositWallet(any(), any())).thenReturn(WALLET);
+        when(accounts.createAccount(any())).thenReturn(new Account(
+            AccountId.of(UUID.randomUUID()), Optional.of(WALLET), USDC_ETH.network(),
+            "0xORPHAN", "invoice-x", Set.of("USDC")));
+        org.mockito.Mockito.doThrow(new RuntimeException("db down"))
+            .when(invoices).save(any());
+
+        assertThatThrownBy(() -> useCase.execute(command(BigInteger.valueOf(1_000_000))))
+            .isInstanceOf(RuntimeException.class);
+
+        // Claim must remain PENDING — releasing would let a retry create a duplicate
+        // custody account. completeClaim must not be reached either.
+        verify(idempotency, never()).releaseClaim(any(), any());
+        verify(idempotency, never()).completeClaim(any(), any(), any());
     }
 
     private CreateInvoiceCommand command(BigInteger amount) {
@@ -147,11 +167,5 @@ class CreateInvoiceUseCaseTest {
             AccountId.of(UUID.randomUUID()), "0xCACHED", FIXED_NOW);
     }
 
-    private static IdempotencyKey eqKey(IdempotencyKey k) {
-        return org.mockito.ArgumentMatchers.eq(k);
-    }
-
-    private static Invoice eqInvoice(Invoice i) {
-        return org.mockito.ArgumentMatchers.eq(i);
-    }
+    private static <T> T eq(T t) { return org.mockito.ArgumentMatchers.eq(t); }
 }

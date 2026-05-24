@@ -1,6 +1,7 @@
 package com.cpayment.payment.infra.web;
 
 import com.cpayment.core.exception.IdempotencyConflictException;
+import com.cpayment.core.exception.IdempotencyInProgressException;
 import com.cpayment.custody.domain.exception.CustodyException;
 import com.cpayment.payment.domain.exception.MerchantWalletNotConfiguredException;
 import com.cpayment.payment.domain.exception.PaymentException;
@@ -35,6 +36,12 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiError> onIdempotencyConflict(IdempotencyConflictException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
             .body(ApiError.of("IDEMPOTENCY_CONFLICT", ex.getMessage()));
+    }
+
+    @ExceptionHandler(IdempotencyInProgressException.class)
+    public ResponseEntity<ApiError> onIdempotencyInProgress(IdempotencyInProgressException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ApiError.of("IDEMPOTENCY_IN_PROGRESS", ex.getMessage()));
     }
 
     @ExceptionHandler(MerchantWalletNotConfiguredException.class)
