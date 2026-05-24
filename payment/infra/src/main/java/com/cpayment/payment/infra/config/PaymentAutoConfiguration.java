@@ -4,6 +4,7 @@ import com.cpayment.custody.domain.port.AccountPort;
 import com.cpayment.payment.domain.port.InvoiceIdempotencyStore;
 import com.cpayment.payment.domain.port.InvoiceRepository;
 import com.cpayment.payment.domain.port.MerchantWalletResolver;
+import com.cpayment.payment.domain.port.PaymentMetrics;
 import com.cpayment.payment.domain.usecase.CreateInvoiceUseCase;
 import com.cpayment.payment.domain.usecase.RecordDepositUseCase;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -28,12 +29,15 @@ public class PaymentAutoConfiguration {
                                                      InvoiceIdempotencyStore idempotency,
                                                      MerchantWalletResolver wallets,
                                                      AccountPort custodyAccounts,
+                                                     PaymentMetrics metrics,
                                                      Clock clock) {
-        return new CreateInvoiceUseCase(invoices, idempotency, wallets, custodyAccounts, clock);
+        return new CreateInvoiceUseCase(invoices, idempotency, wallets, custodyAccounts, metrics, clock);
     }
 
     @Bean
-    public RecordDepositUseCase recordDepositUseCase(InvoiceRepository invoices, Clock clock) {
-        return new RecordDepositUseCase(invoices, clock);
+    public RecordDepositUseCase recordDepositUseCase(InvoiceRepository invoices,
+                                                     PaymentMetrics metrics,
+                                                     Clock clock) {
+        return new RecordDepositUseCase(invoices, metrics, clock);
     }
 }

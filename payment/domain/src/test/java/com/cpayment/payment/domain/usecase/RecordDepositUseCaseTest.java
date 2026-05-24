@@ -9,6 +9,7 @@ import com.cpayment.payment.domain.model.InvoiceId;
 import com.cpayment.payment.domain.model.InvoiceStatus;
 import com.cpayment.payment.domain.model.MerchantId;
 import com.cpayment.payment.domain.port.InvoiceRepository;
+import com.cpayment.payment.domain.port.NoOpPaymentMetrics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -38,7 +39,8 @@ class RecordDepositUseCaseTest {
     @BeforeEach
     void setUp() {
         invoices = mock(InvoiceRepository.class);
-        useCase = new RecordDepositUseCase(invoices, Clock.fixed(FIXED_NOW, ZoneOffset.UTC));
+        useCase = new RecordDepositUseCase(
+            invoices, NoOpPaymentMetrics.INSTANCE, Clock.fixed(FIXED_NOW, ZoneOffset.UTC));
     }
 
     @Test

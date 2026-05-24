@@ -18,6 +18,7 @@ import com.cpayment.payment.domain.model.MerchantId;
 import com.cpayment.payment.domain.port.InvoiceIdempotencyStore;
 import com.cpayment.payment.domain.port.InvoiceRepository;
 import com.cpayment.payment.domain.port.MerchantWalletResolver;
+import com.cpayment.payment.domain.port.NoOpPaymentMetrics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -60,7 +61,8 @@ class CreateInvoiceUseCaseTest {
         walletResolver = mock(MerchantWalletResolver.class);
         accounts = mock(AccountPort.class);
         Clock clock = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
-        useCase = new CreateInvoiceUseCase(invoices, idempotency, walletResolver, accounts, clock);
+        useCase = new CreateInvoiceUseCase(
+            invoices, idempotency, walletResolver, accounts, NoOpPaymentMetrics.INSTANCE, clock);
     }
 
     @Test

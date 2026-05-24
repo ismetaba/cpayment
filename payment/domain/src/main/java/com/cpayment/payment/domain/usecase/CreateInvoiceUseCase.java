@@ -12,6 +12,7 @@ import com.cpayment.payment.domain.model.InvoiceId;
 import com.cpayment.payment.domain.port.InvoiceIdempotencyStore;
 import com.cpayment.payment.domain.port.InvoiceRepository;
 import com.cpayment.payment.domain.port.MerchantWalletResolver;
+import com.cpayment.payment.domain.port.PaymentMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,17 +56,20 @@ public final class CreateInvoiceUseCase {
     private final InvoiceIdempotencyStore idempotency;
     private final MerchantWalletResolver merchantWallets;
     private final AccountPort custodyAccounts;
+    private final PaymentMetrics metrics;
     private final Clock clock;
 
     public CreateInvoiceUseCase(InvoiceRepository invoices,
                                 InvoiceIdempotencyStore idempotency,
                                 MerchantWalletResolver merchantWallets,
                                 AccountPort custodyAccounts,
+                                PaymentMetrics metrics,
                                 Clock clock) {
         this.invoices = Objects.requireNonNull(invoices, "invoices");
         this.idempotency = Objects.requireNonNull(idempotency, "idempotency");
         this.merchantWallets = Objects.requireNonNull(merchantWallets, "merchantWallets");
         this.custodyAccounts = Objects.requireNonNull(custodyAccounts, "custodyAccounts");
+        this.metrics = Objects.requireNonNull(metrics, "metrics");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
@@ -75,6 +79,7 @@ public final class CreateInvoiceUseCase {
         String requestHash = RequestHash.of(command);
         Optional<Invoice> cached = idempotency.findExisting(command.idempotencyKey(), requestHash);
         if (cached.isPresent()) {
+            metrics.invoiceIdempotentHit();
             log.info("invoice.idempotent-hit key={} invoice={}",
                      command.idempotencyKey().value(), cached.get().id().value());
             return new InvoiceCreatedResult(cached.get());
@@ -105,6 +110,7 @@ public final class CreateInvoiceUseCase {
 
         invoices.save(invoice);
         idempotency.record(command.idempotencyKey(), requestHash, invoice);
+        metrics.invoiceCreated(command.asset());
 
         log.info("invoice.created id={} merchant={} asset={} expected={} address={} account={}",
                  invoiceId.value(),
