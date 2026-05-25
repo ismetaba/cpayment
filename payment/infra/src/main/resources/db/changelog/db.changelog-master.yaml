@@ -7,3 +7,5 @@ databaseChangeLog:
       file: db/changelog/03-payout.yaml
   - include:
       file: db/changelog/04-outbox-rename-resource.yaml
+  - include:
+      file: db/changelog/05-refund.yaml

@@ -16,7 +16,7 @@ import java.util.UUID;
 public class WebhookOutboxEntity {
 
     public enum Status       { PENDING, DELIVERED, FAILED }
-    public enum ResourceType { INVOICE, PAYOUT }
+    public enum ResourceType { INVOICE, PAYOUT, REFUND }
 
     @Id
     @Column(name = "id", nullable = false, updatable = false)

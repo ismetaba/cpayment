@@ -10,13 +10,19 @@ import com.cpayment.payment.domain.port.PaymentMetrics;
 import com.cpayment.payment.domain.port.PayoutIdempotencyStore;
 import com.cpayment.payment.domain.port.PayoutMutationGateway;
 import com.cpayment.payment.domain.port.PayoutRepository;
+import com.cpayment.payment.domain.port.RefundIdempotencyStore;
+import com.cpayment.payment.domain.port.RefundMutationGateway;
+import com.cpayment.payment.domain.port.RefundRepository;
 import com.cpayment.payment.domain.usecase.CancelPayoutUseCase;
 import com.cpayment.payment.domain.usecase.CreateInvoiceUseCase;
 import com.cpayment.payment.domain.usecase.ExecutePayoutUseCase;
 import com.cpayment.payment.domain.usecase.FindInvoiceUseCase;
 import com.cpayment.payment.domain.usecase.FindPayoutUseCase;
+import com.cpayment.payment.domain.usecase.FindRefundUseCase;
+import com.cpayment.payment.domain.usecase.IssueRefundUseCase;
 import com.cpayment.payment.domain.usecase.RecordDepositUseCase;
 import com.cpayment.payment.domain.usecase.UpdatePayoutFromTransferUseCase;
+import com.cpayment.payment.domain.usecase.UpdateRefundFromTransferUseCase;
 import com.cpayment.payment.infra.webhook.MerchantWebhookProperties;
 import com.cpayment.payment.infra.webhook.WebhookExecutorProperties;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
@@ -92,5 +98,27 @@ public class PaymentAutoConfiguration {
                                                    PayoutMutationGateway gateway,
                                                    Clock clock) {
         return new CancelPayoutUseCase(payouts, gateway, clock);
+    }
+
+    @Bean
+    public IssueRefundUseCase issueRefundUseCase(InvoiceRepository invoices,
+                                                 RefundRepository refunds,
+                                                 RefundIdempotencyStore idempotency,
+                                                 RefundMutationGateway gateway,
+                                                 com.cpayment.custody.domain.port.TransferPort transfers,
+                                                 Clock clock) {
+        return new IssueRefundUseCase(invoices, refunds, idempotency, gateway, transfers, clock);
+    }
+
+    @Bean
+    public UpdateRefundFromTransferUseCase updateRefundFromTransferUseCase(RefundRepository refunds,
+                                                                           RefundMutationGateway gateway,
+                                                                           Clock clock) {
+        return new UpdateRefundFromTransferUseCase(refunds, gateway, clock);
+    }
+
+    @Bean
+    public FindRefundUseCase findRefundUseCase(RefundRepository refunds) {
+        return new FindRefundUseCase(refunds);
     }
 }

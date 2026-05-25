@@ -1,0 +1,52 @@
+databaseChangeLog:
+  - changeSet:
+      id: 7-create-refund
+      author: cpayment
+      changes:
+        - createTable:
+            tableName: cpayment_refund
+            columns:
+              - column: { name: id,                    type: UUID,           constraints: { primaryKey: true, nullable: false } }
+              - column: { name: invoice_id,            type: UUID,           constraints: { nullable: false } }
+              - column: { name: merchant_id,           type: UUID,           constraints: { nullable: false } }
+              - column: { name: asset_canonical,       type: VARCHAR(80),    constraints: { nullable: false } }
+              - column: { name: from_address,          type: VARCHAR(120),   constraints: { nullable: false } }
+              - column: { name: to_address,            type: VARCHAR(120),   constraints: { nullable: false } }
+              - column: { name: amount,                type: NUMERIC(38,0),  constraints: { nullable: false } }
+              - column: { name: reason,                type: VARCHAR(40),    constraints: { nullable: false } }
+              - column: { name: memo,                  type: VARCHAR(200) }
+              - column: { name: status,                type: VARCHAR(20),    constraints: { nullable: false } }
+              - column: { name: custody_transfer_id,   type: UUID,           constraints: { nullable: false, unique: true } }
+              - column: { name: tx_hash,               type: VARCHAR(120) }
+              - column: { name: confirmations,         type: INT }
+              - column: { name: fee_actual,            type: NUMERIC(38,0) }
+              - column: { name: fee_asset_canonical,   type: VARCHAR(80) }
+              - column: { name: failure_reason,        type: VARCHAR(40) }
+              - column: { name: failure_message,       type: VARCHAR(500) }
+              - column: { name: created_at,            type: TIMESTAMP,      constraints: { nullable: false } }
+              - column: { name: updated_at,            type: TIMESTAMP,      constraints: { nullable: false } }
+        - createIndex:
+            tableName: cpayment_refund
+            indexName: idx_refund_invoice
+            columns:
+              - column: { name: invoice_id }
+        - createIndex:
+            tableName: cpayment_refund
+            indexName: idx_refund_merchant_created
+            columns:
+              - column: { name: merchant_id }
+              - column: { name: created_at }
+
+  - changeSet:
+      id: 8-create-refund-idempotency-claim
+      author: cpayment
+      changes:
+        - createTable:
+            tableName: cpayment_refund_idempotency_claim
+            columns:
+              - column: { name: key,          type: VARCHAR(128),   constraints: { primaryKey: true, nullable: false } }
+              - column: { name: request_hash, type: VARCHAR(64),    constraints: { nullable: false } }
+              - column: { name: state,        type: VARCHAR(16),    constraints: { nullable: false } }
+              - column: { name: refund_id,    type: UUID }
+              - column: { name: created_at,   type: TIMESTAMP,      constraints: { nullable: false } }
+              - column: { name: updated_at,   type: TIMESTAMP,      constraints: { nullable: false } }
