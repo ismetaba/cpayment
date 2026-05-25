@@ -2,11 +2,16 @@ package com.cpayment.payment.domain.usecase;
 
 import com.cpayment.payment.domain.exception.PayoutNotCancellableException;
 import com.cpayment.payment.domain.exception.PayoutNotFoundException;
+import com.cpayment.payment.domain.model.BroadcastPayout;
+import com.cpayment.payment.domain.model.CancelledPayout;
+import com.cpayment.payment.domain.model.ConfirmedPayout;
+import com.cpayment.payment.domain.model.FailedPayout;
 import com.cpayment.payment.domain.model.Payout;
 import com.cpayment.payment.domain.model.PayoutEvent;
 import com.cpayment.payment.domain.model.PayoutEventType;
 import com.cpayment.payment.domain.model.PayoutId;
-import com.cpayment.payment.domain.model.PayoutStatus;
+import com.cpayment.payment.domain.model.ReplacedPayout;
+import com.cpayment.payment.domain.model.SubmittedPayout;
 import com.cpayment.payment.domain.port.PayoutMutationGateway;
 import com.cpayment.payment.domain.port.PayoutRepository;
 import org.slf4j.Logger;
@@ -15,35 +20,21 @@ import org.slf4j.LoggerFactory;
 import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * Operator-cancel a payout that has not yet been broadcast.
  *
- * <h2>Cancellability matrix</h2>
- * <ul>
- *   <li>{@code REQUESTED} — never observable externally (the create use case
- *       transitions REQUESTED → SUBMITTED inside the same call). Allowed for
- *       completeness so future "draft payout" flows fit without a new branch.</li>
- *   <li>{@code SUBMITTED} — allowed. The transfer sits in cus-server's policy
- *       queue; cpayment marks the local aggregate CANCELLED and emits
- *       PAYOUT_CANCELLED. cus-server has no cancel endpoint yet, so the upstream
- *       tx may still broadcast — operators reconcile via the resulting
- *       TransferBroadcast/Confirmed event (the local CANCELLED is treated as a
- *       business intent, not a hard on-chain guarantee).</li>
- *   <li>All other states — rejected with {@link PayoutNotCancellableException}.</li>
- * </ul>
+ * <p>Only {@link SubmittedPayout} is cancellable. Cancelling an already-{@link CancelledPayout}
+ * is a no-op (idempotent). Every other variant rejects with
+ * {@link PayoutNotCancellableException} → 422.
  *
- * <p>Cancelling a CANCELLED payout is a no-op (idempotent). Cancelling a
- * BROADCAST/CONFIRMED/FAILED/REPLACED payout is rejected — those are terminal
- * outcomes.
+ * <p>Cus-server has no native cancel endpoint yet, so this is a "local intent" mark:
+ * if cus-server has already broadcast the underlying transfer, the subsequent
+ * TransferBroadcast/Confirmed event will reconcile the on-chain outcome.
  */
 public final class CancelPayoutUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(CancelPayoutUseCase.class);
-
-    private static final Set<PayoutStatus> CANCELLABLE =
-        Set.of(PayoutStatus.REQUESTED, PayoutStatus.SUBMITTED);
 
     private final PayoutRepository payouts;
     private final PayoutMutationGateway gateway;
@@ -62,19 +53,22 @@ public final class CancelPayoutUseCase {
 
         Payout current = payouts.findById(id).orElseThrow(() -> new PayoutNotFoundException(id));
 
-        if (current.status() == PayoutStatus.CANCELLED) {
-            return current; // idempotent
-        }
-        if (!CANCELLABLE.contains(current.status())) {
-            throw new PayoutNotCancellableException(id, current.status());
-        }
+        return switch (current) {
+            case SubmittedPayout s -> cancel(s);
+            case CancelledPayout c -> c;  // idempotent
+            case BroadcastPayout b -> throw new PayoutNotCancellableException(id, b.status());
+            case ConfirmedPayout c -> throw new PayoutNotCancellableException(id, c.status());
+            case FailedPayout    f -> throw new PayoutNotCancellableException(id, f.status());
+            case ReplacedPayout  r -> throw new PayoutNotCancellableException(id, r.status());
+        };
+    }
 
-        Payout cancelled = current.markCancelled(clock.instant());
+    private CancelledPayout cancel(SubmittedPayout submitted) {
+        CancelledPayout cancelled = submitted.cancel(clock.instant());
         gateway.apply(cancelled,
             List.of(PayoutEvent.of(PayoutEventType.PAYOUT_CANCELLED, cancelled)));
-
-        log.info("payout.cancelled id={} previousStatus={} merchant={}",
-            id.value(), current.status(), current.merchantId().value());
+        log.info("payout.cancelled id={} merchant={}",
+            cancelled.id().value(), cancelled.merchantId().value());
         return cancelled;
     }
 }

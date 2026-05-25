@@ -1,16 +1,20 @@
 package com.cpayment.payment.domain.usecase;
 
+import com.cpayment.custody.domain.event.FailureReason;
 import com.cpayment.custody.domain.model.AssetId;
 import com.cpayment.custody.domain.model.NetworkId;
 import com.cpayment.custody.domain.model.TransferId;
 import com.cpayment.payment.domain.exception.PayoutNotCancellableException;
 import com.cpayment.payment.domain.exception.PayoutNotFoundException;
+import com.cpayment.payment.domain.model.BroadcastPayout;
+import com.cpayment.payment.domain.model.CancelledPayout;
 import com.cpayment.payment.domain.model.MerchantId;
 import com.cpayment.payment.domain.model.Payout;
 import com.cpayment.payment.domain.model.PayoutEvent;
 import com.cpayment.payment.domain.model.PayoutEventType;
 import com.cpayment.payment.domain.model.PayoutId;
 import com.cpayment.payment.domain.model.PayoutStatus;
+import com.cpayment.payment.domain.model.SubmittedPayout;
 import com.cpayment.payment.domain.port.PayoutMutationGateway;
 import com.cpayment.payment.domain.port.PayoutRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,7 +36,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class CancelPayoutUseCaseTest {
@@ -53,11 +56,12 @@ class CancelPayoutUseCaseTest {
 
     @Test
     void cancels_a_submitted_payout_and_emits_PAYOUT_CANCELLED() {
-        Payout submitted = sample().markSubmitted(TransferId.of(UUID.randomUUID()), FIXED_NOW.minusSeconds(60));
+        SubmittedPayout submitted = sampleSubmitted();
         when(payouts.findById(submitted.id())).thenReturn(Optional.of(submitted));
 
         Payout result = useCase.execute(submitted.id());
 
+        assertThat(result).isInstanceOf(CancelledPayout.class);
         assertThat(result.status()).isEqualTo(PayoutStatus.CANCELLED);
         assertThat(result.updatedAt()).isEqualTo(FIXED_NOW);
 
@@ -70,20 +74,18 @@ class CancelPayoutUseCaseTest {
 
     @Test
     void cancelling_an_already_cancelled_payout_is_a_no_op() {
-        Payout already = sample().markCancelled(FIXED_NOW.minusSeconds(120));
+        CancelledPayout already = sampleSubmitted().cancel(FIXED_NOW.minusSeconds(120));
         when(payouts.findById(already.id())).thenReturn(Optional.of(already));
 
         Payout result = useCase.execute(already.id());
 
         assertThat(result).isEqualTo(already);
-        verifyNoInteractions(gateway);
+        verify(gateway, never()).apply(any(), any());
     }
 
     @Test
     void rejects_cancellation_when_broadcast_already() {
-        Payout broadcast = sample()
-            .markSubmitted(TransferId.of(UUID.randomUUID()), FIXED_NOW.minusSeconds(120))
-            .markBroadcast("0xdeadbeef", FIXED_NOW.minusSeconds(60));
+        BroadcastPayout broadcast = sampleSubmitted().broadcast("0xdeadbeef", FIXED_NOW.minusSeconds(60));
         when(payouts.findById(broadcast.id())).thenReturn(Optional.of(broadcast));
 
         assertThatThrownBy(() -> useCase.execute(broadcast.id()))
@@ -94,6 +96,16 @@ class CancelPayoutUseCaseTest {
     }
 
     @Test
+    void rejects_cancellation_when_already_failed() {
+        var failed = sampleSubmitted().fail(FailureReason.NETWORK_REJECTED, "boom", FIXED_NOW.minusSeconds(60));
+        when(payouts.findById(failed.id())).thenReturn(Optional.of(failed));
+
+        assertThatThrownBy(() -> useCase.execute(failed.id()))
+            .isInstanceOf(PayoutNotCancellableException.class)
+            .hasMessageContaining("FAILED");
+    }
+
+    @Test
     void rejects_when_payout_unknown() {
         PayoutId id = PayoutId.newId();
         when(payouts.findById(id)).thenReturn(Optional.empty());
@@ -101,17 +113,18 @@ class CancelPayoutUseCaseTest {
         assertThatThrownBy(() -> useCase.execute(id))
             .isInstanceOf(PayoutNotFoundException.class);
 
-        verifyNoInteractions(gateway);
+        verify(gateway, never()).apply(any(), any());
     }
 
-    private Payout sample() {
-        return Payout.requested(
+    private SubmittedPayout sampleSubmitted() {
+        return SubmittedPayout.fresh(
             PayoutId.newId(),
             MerchantId.of(UUID.randomUUID()),
             USDC_ETH,
             "0xFROM", "0xTO",
             BigInteger.valueOf(500_000),
             Optional.empty(),
+            TransferId.of(UUID.randomUUID()),
             FIXED_NOW.minusSeconds(180)
         );
     }

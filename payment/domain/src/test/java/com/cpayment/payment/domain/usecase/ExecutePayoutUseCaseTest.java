@@ -2,7 +2,6 @@ package com.cpayment.payment.domain.usecase;
 
 import com.cpayment.core.exception.IdempotencyConflictException;
 import com.cpayment.core.model.IdempotencyKey;
-import com.cpayment.custody.domain.model.AccountId;
 import com.cpayment.custody.domain.model.AssetId;
 import com.cpayment.custody.domain.model.NetworkId;
 import com.cpayment.custody.domain.model.SendTransferCommand;
@@ -16,6 +15,7 @@ import com.cpayment.payment.domain.model.PayoutEvent;
 import com.cpayment.payment.domain.model.PayoutEventType;
 import com.cpayment.payment.domain.model.PayoutId;
 import com.cpayment.payment.domain.model.PayoutStatus;
+import com.cpayment.payment.domain.model.SubmittedPayout;
 import com.cpayment.payment.domain.port.PayoutIdempotencyStore;
 import com.cpayment.payment.domain.port.PayoutMutationGateway;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +33,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -69,10 +70,12 @@ class ExecutePayoutUseCaseTest {
         PayoutCreatedResult result = useCase.execute(command(BigInteger.valueOf(1_000_000)));
 
         Payout p = result.payout();
+        assertThat(p).isInstanceOf(SubmittedPayout.class);
         assertThat(p.status()).isEqualTo(PayoutStatus.SUBMITTED);
-        assertThat(p.custodyTransferId()).contains(transferId);
+        assertThat(p.custodyTransferId()).isEqualTo(transferId);
 
-        ArgumentCaptor<List<PayoutEvent>> eventsCaptor = captor();
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<PayoutEvent>> eventsCaptor = ArgumentCaptor.forClass(List.class);
         verify(gateway).apply(any(Payout.class), eventsCaptor.capture());
         assertThat(eventsCaptor.getValue()).hasSize(1);
         assertThat(eventsCaptor.getValue().get(0).type()).isEqualTo(PayoutEventType.PAYOUT_SUBMITTED);
@@ -83,7 +86,7 @@ class ExecutePayoutUseCaseTest {
 
     @Test
     void idempotent_hit_returns_cached_payout_without_side_effects() {
-        Payout cached = samplePayout();
+        Payout cached = sampleSubmitted();
         when(idempotency.beginClaim(eq(KEY), any(String.class))).thenReturn(Optional.of(cached));
 
         PayoutCreatedResult result = useCase.execute(command(BigInteger.valueOf(1_000_000)));
@@ -136,18 +139,9 @@ class ExecutePayoutUseCaseTest {
             "0xFROM", "0xTO", amount, Optional.empty());
     }
 
-    private Payout samplePayout() {
-        return Payout.requested(PayoutId.newId(), MERCHANT, USDC_ETH,
-            "0xFROM", "0xTO", BigInteger.valueOf(1_000_000), Optional.empty(), FIXED_NOW);
+    private SubmittedPayout sampleSubmitted() {
+        return SubmittedPayout.fresh(PayoutId.newId(), MERCHANT, USDC_ETH,
+            "0xFROM", "0xTO", BigInteger.valueOf(1_000_000),
+            Optional.empty(), TransferId.of(UUID.randomUUID()), FIXED_NOW);
     }
-
-    private static <T> T eq(T t) { return org.mockito.ArgumentMatchers.eq(t); }
-
-    @SuppressWarnings("unchecked")
-    private static <T> ArgumentCaptor<List<T>> captor() {
-        return ArgumentCaptor.forClass(List.class);
-    }
-
-    // unused import suppressor
-    @SuppressWarnings("unused") private static void touch() { AccountId.of(UUID.randomUUID()); }
 }

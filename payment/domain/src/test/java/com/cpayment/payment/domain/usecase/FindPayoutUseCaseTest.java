@@ -2,10 +2,12 @@ package com.cpayment.payment.domain.usecase;
 
 import com.cpayment.custody.domain.model.AssetId;
 import com.cpayment.custody.domain.model.NetworkId;
+import com.cpayment.custody.domain.model.TransferId;
 import com.cpayment.payment.domain.exception.PayoutNotFoundException;
 import com.cpayment.payment.domain.model.MerchantId;
 import com.cpayment.payment.domain.model.Payout;
 import com.cpayment.payment.domain.model.PayoutId;
+import com.cpayment.payment.domain.model.SubmittedPayout;
 import com.cpayment.payment.domain.port.PayoutRepository;
 import org.junit.jupiter.api.Test;
 
@@ -43,13 +45,14 @@ class FindPayoutUseCaseTest {
     }
 
     private Payout sample() {
-        return Payout.requested(
+        return SubmittedPayout.fresh(
             PayoutId.newId(),
             MerchantId.of(UUID.randomUUID()),
             new AssetId(new NetworkId("eth", "mainnet"), "usdc"),
             "0xFROM", "0xTO",
             BigInteger.valueOf(1_000_000),
             Optional.empty(),
+            TransferId.of(UUID.randomUUID()),
             Instant.parse("2026-05-25T12:00:00Z")
         );
     }

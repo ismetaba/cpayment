@@ -1,7 +1,13 @@
 package com.cpayment.payment.infra.webhook;
 
+import com.cpayment.payment.domain.model.BroadcastPayout;
+import com.cpayment.payment.domain.model.CancelledPayout;
+import com.cpayment.payment.domain.model.ConfirmedPayout;
+import com.cpayment.payment.domain.model.FailedPayout;
 import com.cpayment.payment.domain.model.Payout;
 import com.cpayment.payment.domain.model.PayoutEvent;
+import com.cpayment.payment.domain.model.ReplacedPayout;
+import com.cpayment.payment.domain.model.SubmittedPayout;
 
 import java.math.BigInteger;
 import java.time.Instant;
@@ -10,27 +16,9 @@ import java.util.UUID;
 /**
  * On-the-wire payload for payout webhooks. Stable contract — additive changes only.
  *
- * <pre>{@code
- * {
- *   "eventId":   "<random>",
- *   "eventType": "PAYOUT_CONFIRMED",
- *   "createdAt": "2026-05-25T12:00:00Z",
- *   "payout": {
- *     "id":            "...",
- *     "merchantId":    "...",
- *     "asset":         "eth:mainnet:usdc",
- *     "fromAddress":   "0x...",
- *     "toAddress":     "0x...",
- *     "amount":        "1000000",
- *     "status":        "CONFIRMED",
- *     "transferId":    "...",
- *     "txHash":        "0x...",
- *     "confirmations": 12,
- *     "feeActual":     "21000",
- *     "feeAsset":      "eth:mainnet:eth"
- *   }
- * }
- * }</pre>
+ * <p>The body always carries every field of the underlying {@link Payout} variant
+ * — variant-specific fields are populated, the rest are {@code null} so merchants
+ * receive a consistent JSON shape regardless of lifecycle position.
  */
 public record PayoutWebhookPayload(
     UUID eventId,
@@ -39,32 +27,40 @@ public record PayoutWebhookPayload(
     PayoutBody payout
 ) {
 
-    /** Builds the wire payload using the outbox row's UUID as {@code eventId} so it
-     *  matches the {@code X-Cpayment-Event-Id} HTTP header (used by merchants to dedupe). */
+    /** Builds the wire payload with the outbox row UUID as {@code eventId} so it
+     *  matches the {@code X-Cpayment-Event-Id} HTTP header. */
     public static PayoutWebhookPayload of(UUID eventId, PayoutEvent e) {
-        Payout p = e.payout();
-        return new PayoutWebhookPayload(
-            eventId,
-            e.type().name(),
-            Instant.now(),
-            new PayoutBody(
-                p.id().value(),
-                p.merchantId().value(),
-                p.asset().canonical(),
-                p.fromAddress(),
-                p.toAddress(),
-                p.amount(),
-                p.memo().orElse(null),
-                p.status().name(),
-                p.custodyTransferId().map(t -> t.value()).orElse(null),
-                p.txHash().orElse(null),
-                p.confirmations().orElse(null),
-                p.feeActual().orElse(null),
-                p.feeAsset().map(a -> a.canonical()).orElse(null),
-                p.failureReason().map(Enum::name).orElse(null),
-                p.failureMessage().orElse(null)
-            )
-        );
+        return new PayoutWebhookPayload(eventId, e.type().name(), Instant.now(), bodyOf(e.payout()));
+    }
+
+    private static PayoutBody bodyOf(Payout p) {
+        PayoutBody.Builder b = PayoutBody.builder()
+            .id(p.id().value())
+            .merchantId(p.merchantId().value())
+            .asset(p.asset().canonical())
+            .fromAddress(p.fromAddress())
+            .toAddress(p.toAddress())
+            .amount(p.amount())
+            .memo(p.memo().orElse(null))
+            .status(p.status().name())
+            .transferId(p.custodyTransferId().value());
+
+        switch (p) {
+            case SubmittedPayout s -> { /* nothing extra */ }
+            case BroadcastPayout x -> b.txHash(x.txHash());
+            case ConfirmedPayout c -> b
+                .txHash(c.txHash())
+                .confirmations(c.confirmations())
+                .feeActual(c.feeActual())
+                .feeAsset(c.feeAsset().canonical());
+            case FailedPayout f -> b
+                .txHash(f.txHash().orElse(null))
+                .failureReason(f.failureReason().name())
+                .failureMessage(f.failureMessage());
+            case ReplacedPayout r -> b.replacedBy(r.replacedBy().value());
+            case CancelledPayout x -> { /* nothing extra */ }
+        }
+        return b.build();
     }
 
     public record PayoutBody(
@@ -82,6 +78,42 @@ public record PayoutWebhookPayload(
         BigInteger feeActual,
         String feeAsset,
         String failureReason,
-        String failureMessage
-    ) {}
+        String failureMessage,
+        UUID replacedBy
+    ) {
+
+        static Builder builder() { return new Builder(); }
+
+        static final class Builder {
+            private UUID id; private UUID merchantId; private String asset;
+            private String fromAddress; private String toAddress; private BigInteger amount;
+            private String memo; private String status; private UUID transferId;
+            private String txHash; private Integer confirmations; private BigInteger feeActual;
+            private String feeAsset; private String failureReason; private String failureMessage;
+            private UUID replacedBy;
+
+            Builder id(UUID v) { this.id = v; return this; }
+            Builder merchantId(UUID v) { this.merchantId = v; return this; }
+            Builder asset(String v) { this.asset = v; return this; }
+            Builder fromAddress(String v) { this.fromAddress = v; return this; }
+            Builder toAddress(String v) { this.toAddress = v; return this; }
+            Builder amount(BigInteger v) { this.amount = v; return this; }
+            Builder memo(String v) { this.memo = v; return this; }
+            Builder status(String v) { this.status = v; return this; }
+            Builder transferId(UUID v) { this.transferId = v; return this; }
+            Builder txHash(String v) { this.txHash = v; return this; }
+            Builder confirmations(int v) { this.confirmations = v; return this; }
+            Builder feeActual(BigInteger v) { this.feeActual = v; return this; }
+            Builder feeAsset(String v) { this.feeAsset = v; return this; }
+            Builder failureReason(String v) { this.failureReason = v; return this; }
+            Builder failureMessage(String v) { this.failureMessage = v; return this; }
+            Builder replacedBy(UUID v) { this.replacedBy = v; return this; }
+
+            PayoutBody build() {
+                return new PayoutBody(id, merchantId, asset, fromAddress, toAddress, amount,
+                    memo, status, transferId, txHash, confirmations, feeActual, feeAsset,
+                    failureReason, failureMessage, replacedBy);
+            }
+        }
+    }
 }

@@ -10,6 +10,7 @@ import com.cpayment.payment.domain.model.PayoutCreatedResult;
 import com.cpayment.payment.domain.model.PayoutEvent;
 import com.cpayment.payment.domain.model.PayoutEventType;
 import com.cpayment.payment.domain.model.PayoutId;
+import com.cpayment.payment.domain.model.SubmittedPayout;
 import com.cpayment.payment.domain.port.PayoutIdempotencyStore;
 import com.cpayment.payment.domain.port.PayoutMutationGateway;
 import org.slf4j.Logger;
@@ -81,11 +82,10 @@ public final class ExecutePayoutUseCase {
 
         try {
             Instant now = clock.instant();
-            Payout submitted = Payout.requested(
+            SubmittedPayout submitted = SubmittedPayout.fresh(
                 payoutId, command.merchantId(), command.asset(),
                 command.fromAddress(), command.toAddress(), command.amount(),
-                command.memo(), now
-            ).markSubmitted(transferId, now);
+                command.memo(), transferId, now);
 
             gateway.apply(submitted,
                 List.of(PayoutEvent.of(PayoutEventType.PAYOUT_SUBMITTED, submitted)));
