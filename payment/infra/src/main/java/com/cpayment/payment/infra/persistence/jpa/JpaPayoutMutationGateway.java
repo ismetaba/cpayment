@@ -9,56 +9,41 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Clock;
-import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
 /**
  * Atomic payout save + outbox enqueue. Same pattern as
  * {@link JpaInvoiceMutationGateway}; both write into the shared
- * {@code cpayment_webhook_outbox} table — the dispatcher delivers bytes-as-bytes,
- * agnostic of which domain produced them.
+ * {@code cpayment_webhook_outbox} table via {@link OutboxWriter}.
  */
 @Component
 public class JpaPayoutMutationGateway implements PayoutMutationGateway {
 
     private final PayoutJpaRepository payouts;
-    private final WebhookOutboxJpaRepository outbox;
+    private final OutboxWriter outbox;
     private final ObjectMapper objectMapper;
-    private final Clock clock;
 
     public JpaPayoutMutationGateway(PayoutJpaRepository payouts,
-                                    WebhookOutboxJpaRepository outbox,
-                                    ObjectMapper objectMapper,
-                                    Clock clock) {
+                                    OutboxWriter outbox,
+                                    ObjectMapper objectMapper) {
         this.payouts = payouts;
         this.outbox = outbox;
         this.objectMapper = objectMapper;
-        this.clock = clock;
     }
 
     @Override
     @Transactional
     public void apply(Payout updated, List<PayoutEvent> events) {
         payouts.save(PayoutMapper.toEntity(updated));
-
-        Instant now = clock.instant();
         for (PayoutEvent event : events) {
-            UUID eventId = UUID.randomUUID();
-            WebhookOutboxEntity row = new WebhookOutboxEntity();
-            row.setId(eventId);
-            row.setResourceId(event.payout().id().value());
-            row.setResourceType(WebhookOutboxEntity.ResourceType.PAYOUT);
-            row.setMerchantId(event.payout().merchantId().value());
-            row.setEventType(event.type().name());
-            row.setPayload(serialize(eventId, event));
-            row.setStatus(WebhookOutboxEntity.Status.PENDING);
-            row.setAttempts(0);
-            row.setNextAttemptAt(now);
-            row.setCreatedAt(now);
-            row.setUpdatedAt(now);
-            outbox.save(row);
+            outbox.enqueue(
+                event.payout().id().value(),
+                WebhookOutboxEntity.ResourceType.PAYOUT,
+                event.payout().merchantId().value(),
+                event.type().name(),
+                eventId -> serialize(eventId, event)
+            );
         }
     }
 
@@ -66,8 +51,8 @@ public class JpaPayoutMutationGateway implements PayoutMutationGateway {
         try {
             return objectMapper.writeValueAsString(PayoutWebhookPayload.of(eventId, event));
         } catch (JsonProcessingException e) {
-            throw new IllegalStateException("failed to serialize payout webhook payload for "
-                + event.payout().id().value(), e);
+            throw new IllegalStateException(
+                "failed to serialize payout webhook payload for " + event.payout().id().value(), e);
         }
     }
 }

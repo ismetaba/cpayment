@@ -9,10 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Clock;
-import java.time.Instant;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * Atomic invoice update + outbox enqueue. The whole method runs in a single transaction
@@ -23,50 +20,38 @@ import java.util.UUID;
 public class JpaInvoiceMutationGateway implements InvoiceMutationGateway {
 
     private final InvoiceJpaRepository invoices;
-    private final WebhookOutboxJpaRepository outbox;
+    private final OutboxWriter outbox;
     private final ObjectMapper objectMapper;
-    private final Clock clock;
 
     public JpaInvoiceMutationGateway(InvoiceJpaRepository invoices,
-                                     WebhookOutboxJpaRepository outbox,
-                                     ObjectMapper objectMapper,
-                                     Clock clock) {
+                                     OutboxWriter outbox,
+                                     ObjectMapper objectMapper) {
         this.invoices = invoices;
         this.outbox = outbox;
         this.objectMapper = objectMapper;
-        this.clock = clock;
     }
 
     @Override
     @Transactional
     public void apply(Invoice updated, List<InvoiceEvent> events) {
         invoices.save(InvoiceMapper.toEntity(updated));
-
-        Instant now = clock.instant();
         for (InvoiceEvent event : events) {
-            UUID eventId = UUID.randomUUID();
-            WebhookOutboxEntity row = new WebhookOutboxEntity();
-            row.setId(eventId);
-            row.setResourceId(event.invoice().id().value());
-            row.setResourceType(WebhookOutboxEntity.ResourceType.INVOICE);
-            row.setMerchantId(event.invoice().merchantId().value());
-            row.setEventType(event.type().name());
-            row.setPayload(serialize(eventId, event));
-            row.setStatus(WebhookOutboxEntity.Status.PENDING);
-            row.setAttempts(0);
-            row.setNextAttemptAt(now);
-            row.setCreatedAt(now);
-            row.setUpdatedAt(now);
-            outbox.save(row);
+            outbox.enqueue(
+                event.invoice().id().value(),
+                WebhookOutboxEntity.ResourceType.INVOICE,
+                event.invoice().merchantId().value(),
+                event.type().name(),
+                eventId -> serialize(eventId, event)
+            );
         }
     }
 
-    private String serialize(UUID eventId, InvoiceEvent event) {
+    private String serialize(java.util.UUID eventId, InvoiceEvent event) {
         try {
             return objectMapper.writeValueAsString(WebhookPayload.of(eventId, event));
         } catch (JsonProcessingException e) {
-            throw new IllegalStateException("failed to serialize webhook payload for "
-                + event.invoice().id().value(), e);
+            throw new IllegalStateException(
+                "failed to serialize webhook payload for " + event.invoice().id().value(), e);
         }
     }
 }

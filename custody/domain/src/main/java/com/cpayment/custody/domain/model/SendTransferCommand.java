@@ -7,15 +7,20 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * idempotencyKey is REQUIRED — adapters dedupe via local table.
- * fromAddress is required because cus-server addresses transfers by chain address, not
- * by AccountId; the caller already knows it (stored on the invoice / wallet).
- * memo is honored only when capabilities advertise MEMO_SUPPORTED; otherwise the
- * adapter logs a warning and proceeds without it.
+ * Custody-agnostic transfer request.
+ *
+ * <ul>
+ *   <li>{@code idempotencyKey} REQUIRED — adapter dedupes via two-phase claim.</li>
+ *   <li>{@code fromAddress} is the on-chain source; cus-server addresses transfers by
+ *       chain address, not by AccountId. (An earlier draft also carried an AccountId;
+ *       removed because no adapter actually used it and payout callers had to fabricate
+ *       a placeholder, leaking the abstraction.)</li>
+ *   <li>{@code memo} is honored only when capabilities advertise MEMO_SUPPORTED;
+ *       otherwise the adapter logs a warning and proceeds without it.</li>
+ * </ul>
  */
 public record SendTransferCommand(
     IdempotencyKey idempotencyKey,
-    AccountId fromAccount,
     String fromAddress,
     String toAddress,
     AssetId asset,
@@ -26,7 +31,6 @@ public record SendTransferCommand(
 
     public SendTransferCommand {
         Objects.requireNonNull(idempotencyKey, "idempotencyKey");
-        Objects.requireNonNull(fromAccount, "fromAccount");
         if (fromAddress == null || fromAddress.isBlank()) {
             throw new IllegalArgumentException("fromAddress required");
         }

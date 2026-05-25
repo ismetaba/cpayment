@@ -18,7 +18,6 @@ final class TransferRequestHash {
 
     static String of(SendTransferCommand cmd) {
         String canonical = String.join("|",
-            cmd.fromAccount().value().toString(),
             cmd.fromAddress(),
             cmd.toAddress(),
             cmd.asset().canonical(),

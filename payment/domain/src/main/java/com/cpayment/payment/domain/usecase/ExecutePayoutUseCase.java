@@ -71,7 +71,7 @@ public final class ExecutePayoutUseCase {
         PayoutId payoutId = PayoutId.newId();
         TransferId transferId;
         try {
-            transferId = sendToCustody(payoutId, command);
+            transferId = sendToCustody(command);
         } catch (RuntimeException preCustody) {
             idempotency.releaseClaim(command.idempotencyKey(), hash);
             log.warn("payout.create-failed-before-custody key={} reason={}",
@@ -105,15 +105,12 @@ public final class ExecutePayoutUseCase {
         }
     }
 
-    private TransferId sendToCustody(PayoutId payoutId, CreatePayoutCommand command) {
+    private TransferId sendToCustody(CreatePayoutCommand command) {
         // Adapter-side idempotency uses the same client-supplied key, with a payout
         // prefix to avoid colliding with invoice claims that share the namespace.
         IdempotencyKey adapterKey = IdempotencyKey.of("payout-" + command.idempotencyKey().value());
-        com.cpayment.custody.domain.model.AccountId placeholderAccountId =
-            com.cpayment.custody.domain.model.AccountId.of(payoutId.value());
         SendTransferCommand cmd = new SendTransferCommand(
             adapterKey,
-            placeholderAccountId,
             command.fromAddress(),
             command.toAddress(),
             command.asset(),
