@@ -9,3 +9,5 @@ databaseChangeLog:
       file: db/changelog/04-outbox-rename-resource.yaml
   - include:
       file: db/changelog/05-refund.yaml
+  - include:
+      file: db/changelog/06-custody-idempotency.yaml

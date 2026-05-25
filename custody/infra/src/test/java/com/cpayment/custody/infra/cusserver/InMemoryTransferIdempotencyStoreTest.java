@@ -13,16 +13,16 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class InMemoryIdempotencyStoreTest {
+class InMemoryTransferIdempotencyStoreTest {
 
     private static final IdempotencyKey KEY = IdempotencyKey.of("transfer-key-1");
     private static final String HASH_A = "hashA";
     private static final String HASH_B = "hashB";
 
-    private InMemoryIdempotencyStore store;
+    private InMemoryTransferIdempotencyStore store;
 
     @BeforeEach
-    void setUp() { store = new InMemoryIdempotencyStore(); }
+    void setUp() { store = new InMemoryTransferIdempotencyStore(); }
 
     @Test
     void begin_on_unknown_key_returns_empty_and_holds_pending() {

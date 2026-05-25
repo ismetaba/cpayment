@@ -4,26 +4,23 @@ import com.cpayment.core.exception.IdempotencyConflictException;
 import com.cpayment.core.exception.IdempotencyInProgressException;
 import com.cpayment.core.model.IdempotencyKey;
 import com.cpayment.custody.domain.model.TransferId;
-import org.springframework.stereotype.Component;
+import com.cpayment.custody.domain.port.TransferIdempotencyStore;
 
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
- * In-memory two-phase idempotency store. Production replacement should be a
- * JPA-backed table on the same DB used by the payment side, mirroring the
- * Invoice/Payout idempotency claim tables. For first cut the in-memory map is
- * acceptable because the crash-window is closed once the {@link #beginClaim}
- * row exists — a restart loses the PENDING marker but the retry then re-enters
- * the same code path and the cus-server side-effect either repeats (rare in
- * practice without a stable in-flight queue) or is reconciled by an operator
- * via cus-server logs.
+ * In-memory two-phase store. Test-only — production wires
+ * {@code JpaCustodyIdempotencyStore} (in payment-infra) instead. Not a Spring
+ * {@code @Component} on purpose: keeping it out of the bean graph guarantees a
+ * production build can never accidentally fall back to in-memory storage and
+ * lose dedupe state on restart (which would let gas-funder + retry loops
+ * double-send to cus-server).
  *
  * <p>All transitions use {@link ConcurrentMap#compute} so test+swap is atomic.
  */
-@Component
-public class InMemoryIdempotencyStore implements IdempotencyStore {
+public class InMemoryTransferIdempotencyStore implements TransferIdempotencyStore {
 
     private sealed interface Entry permits Pending, Completed {
         String requestHash();
@@ -38,9 +35,7 @@ public class InMemoryIdempotencyStore implements IdempotencyStore {
         var holder = new Object() { Optional<TransferId> result = Optional.empty(); };
 
         table.compute(key, (k, existing) -> {
-            if (existing == null) {
-                return new Pending(requestHash);
-            }
+            if (existing == null) return new Pending(requestHash);
             if (!existing.requestHash().equals(requestHash)) {
                 throw new IdempotencyConflictException(
                     "idempotency key reused with a different request payload: " + key.value());
@@ -67,7 +62,7 @@ public class InMemoryIdempotencyStore implements IdempotencyStore {
                 throw new IdempotencyConflictException(
                     "completeClaim hash mismatch for key " + key.value());
             }
-            if (existing instanceof Completed c) return c; // idempotent
+            if (existing instanceof Completed c) return c;
             return new Completed(requestHash, transferId);
         });
     }
@@ -75,9 +70,7 @@ public class InMemoryIdempotencyStore implements IdempotencyStore {
     @Override
     public void releaseClaim(IdempotencyKey key, String requestHash) {
         table.compute(key, (k, existing) -> {
-            if (existing instanceof Pending p && p.requestHash().equals(requestHash)) {
-                return null;
-            }
+            if (existing instanceof Pending p && p.requestHash().equals(requestHash)) return null;
             return existing;
         });
     }

@@ -8,6 +8,7 @@ import com.cpayment.custody.domain.model.Transfer;
 import com.cpayment.custody.domain.model.TransferFilter;
 import com.cpayment.custody.domain.model.TransferId;
 import com.cpayment.custody.domain.model.TransferState;
+import com.cpayment.custody.domain.port.TransferIdempotencyStore;
 import com.cpayment.custody.domain.port.TransferPort;
 import com.cpayment.custody.infra.cusserver.exception.CustodyAdapterException;
 import com.cpayment.custody.infra.cusserver.mapping.AssetIdMapper;
@@ -32,7 +33,7 @@ import java.util.Optional;
  *
  * <h2>Idempotency</h2>
  * cus-server does NOT accept an Idempotency-Key. The adapter compensates by holding an
- * {@link IdempotencyStore} keyed by the caller's {@code idempotencyKey + requestHash}:
+ * {@link TransferIdempotencyStore} keyed by the caller's {@code idempotencyKey + requestHash}:
  * <ol>
  *   <li>Look up the key. If the same hash is recorded, return the previously assigned
  *       {@link TransferId} without re-calling cus-server.</li>
@@ -56,14 +57,14 @@ public class CusServerTransferAdapter implements TransferPort {
     private final NetworkIdMapper networkMapper;
     private final AssetIdMapper assetMapper;
     private final FeeStrategyMapper feeMapper;
-    private final IdempotencyStore idempotency;
+    private final TransferIdempotencyStore idempotency;
     private final ResilientHttpExecutor resilient;
 
     public CusServerTransferAdapter(CusServerRestClient client,
                                     NetworkIdMapper networkMapper,
                                     AssetIdMapper assetMapper,
                                     FeeStrategyMapper feeMapper,
-                                    IdempotencyStore idempotency,
+                                    TransferIdempotencyStore idempotency,
                                     ResilientHttpExecutor resilient) {
         this.client = client;
         this.networkMapper = networkMapper;
