@@ -63,8 +63,9 @@ java -jar dist/target/cpayment.jar
 ```
 POST  /api/v1/invoices       Idempotency-Key required → 201 + Location
 GET   /api/v1/invoices/{id}                            → 200 | 404
-POST  /api/v1/payouts        Idempotency-Key required → 201 + Location
-GET   /api/v1/payouts/{id}                             → 200 | 404
+POST  /api/v1/payouts                Idempotency-Key required → 201 + Location
+GET   /api/v1/payouts/{id}                                    → 200 | 404
+POST  /api/v1/payouts/{id}/cancel                             → 200 | 404 | 422
 GET   /actuator/{health,info,metrics,prometheus}
 GET   /swagger-ui.html       interactive OpenAPI 3 UI
 GET   /v3/api-docs           raw OpenAPI 3 spec (merchant API only)

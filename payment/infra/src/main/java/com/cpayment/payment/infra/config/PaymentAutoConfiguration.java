@@ -10,6 +10,7 @@ import com.cpayment.payment.domain.port.PaymentMetrics;
 import com.cpayment.payment.domain.port.PayoutIdempotencyStore;
 import com.cpayment.payment.domain.port.PayoutMutationGateway;
 import com.cpayment.payment.domain.port.PayoutRepository;
+import com.cpayment.payment.domain.usecase.CancelPayoutUseCase;
 import com.cpayment.payment.domain.usecase.CreateInvoiceUseCase;
 import com.cpayment.payment.domain.usecase.ExecutePayoutUseCase;
 import com.cpayment.payment.domain.usecase.FindInvoiceUseCase;
@@ -84,5 +85,12 @@ public class PaymentAutoConfiguration {
     @Bean
     public FindPayoutUseCase findPayoutUseCase(PayoutRepository payouts) {
         return new FindPayoutUseCase(payouts);
+    }
+
+    @Bean
+    public CancelPayoutUseCase cancelPayoutUseCase(PayoutRepository payouts,
+                                                   PayoutMutationGateway gateway,
+                                                   Clock clock) {
+        return new CancelPayoutUseCase(payouts, gateway, clock);
     }
 }
