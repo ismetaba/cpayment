@@ -23,6 +23,7 @@ import com.cpayment.payment.domain.usecase.IssueRefundUseCase;
 import com.cpayment.payment.domain.usecase.RecordDepositUseCase;
 import com.cpayment.payment.domain.usecase.UpdatePayoutFromTransferUseCase;
 import com.cpayment.payment.domain.usecase.UpdateRefundFromTransferUseCase;
+import com.cpayment.payment.infra.gas.GasFunderProperties;
 import com.cpayment.payment.infra.webhook.MerchantWebhookProperties;
 import com.cpayment.payment.infra.webhook.WebhookExecutorProperties;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
@@ -37,7 +38,12 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
 import java.time.Clock;
 
 @Configuration
-@EnableConfigurationProperties({ MerchantWalletProperties.class, MerchantWebhookProperties.class, WebhookExecutorProperties.class })
+@EnableConfigurationProperties({
+    MerchantWalletProperties.class,
+    MerchantWebhookProperties.class,
+    WebhookExecutorProperties.class,
+    GasFunderProperties.class
+})
 @ComponentScan(basePackages = "com.cpayment.payment.infra")
 @EntityScan(basePackages = "com.cpayment.payment.infra.persistence.jpa")
 @EnableJpaRepositories(basePackages = "com.cpayment.payment.infra.persistence.jpa")
