@@ -82,15 +82,17 @@ public final class IssueRefundUseCase {
             return new RefundCreatedResult(cached.get());
         }
 
-        Invoice invoice = invoices.findById(command.invoiceId())
-            .orElseThrow(() -> {
-                idempotency.releaseClaim(command.idempotencyKey(), hash);
-                return new InvoiceNotFoundException(command.invoiceId());
-            });
-        validateInvoiceRefundable(invoice, command);
-
+        // Lookup + validation + custody-send are all "pre-side-effect". A failure in any
+        // of them must release the claim so a corrected retry can proceed; otherwise the
+        // claim stays PENDING forever and the client sees IDEMPOTENCY_IN_PROGRESS on its
+        // next attempt — a confusing error for what is actually a client-fixable bad
+        // request. Only failures AFTER sendTransfer succeeds leave the claim PENDING.
+        Invoice invoice;
         TransferId transferId;
         try {
+            invoice = invoices.findById(command.invoiceId())
+                .orElseThrow(() -> new InvoiceNotFoundException(command.invoiceId()));
+            validateInvoiceRefundable(invoice, command);
             transferId = sendToCustody(invoice, command);
         } catch (RuntimeException preCustody) {
             idempotency.releaseClaim(command.idempotencyKey(), hash);

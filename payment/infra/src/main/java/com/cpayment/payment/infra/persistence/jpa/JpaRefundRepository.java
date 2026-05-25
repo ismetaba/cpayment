@@ -9,6 +9,7 @@ import com.cpayment.payment.domain.port.RefundRepository;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.List;
 import java.util.Optional;
@@ -41,7 +42,7 @@ public class JpaRefundRepository implements RefundRepository {
     @Override
     @Transactional(readOnly = true)
     public BigInteger sumIssuedNonFailed(InvoiceId invoiceId) {
-        BigInteger v = jpa.sumNonFailedAmounts(invoiceId.value(), RefundStatus.FAILED);
-        return v != null ? v : BigInteger.ZERO;
+        BigDecimal v = jpa.sumNonFailedAmounts(invoiceId.value(), RefundStatus.FAILED);
+        return v != null ? v.toBigInteger() : BigInteger.ZERO;
     }
 }

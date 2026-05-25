@@ -111,7 +111,7 @@ class IssueRefundUseCaseTest {
     }
 
     @Test
-    void rejects_when_invoice_not_paid() {
+    void rejects_when_invoice_not_paid_AND_releases_claim() {
         Invoice pending = Invoice.newlyCreated(InvoiceId.newId(), MerchantId.of(UUID.randomUUID()),
             USDC_ETH, BigInteger.valueOf(1_000_000), 12,
             AccountId.of(UUID.randomUUID()), "0xADDR", FIXED_NOW.minusSeconds(600));
@@ -122,11 +122,12 @@ class IssueRefundUseCaseTest {
             .isInstanceOf(InvoiceNotRefundableException.class)
             .hasMessageContaining("AWAITING_DEPOSIT");
 
+        verify(idempotency).releaseClaim(eq(KEY), any());  // validation failure MUST release the claim
         verifyNoInteractions(transfers, gateway);
     }
 
     @Test
-    void rejects_when_total_refunded_would_exceed_invoice() {
+    void rejects_when_total_refunded_would_exceed_invoice_AND_releases_claim() {
         Invoice paid = paidInvoice(BigInteger.valueOf(1_000_000));
         when(idempotency.beginClaim(any(), any())).thenReturn(Optional.empty());
         when(invoices.findById(paid.id())).thenReturn(Optional.of(paid));
@@ -137,6 +138,7 @@ class IssueRefundUseCaseTest {
             .isInstanceOf(InvoiceNotRefundableException.class)
             .hasMessageContaining("exceeds");
 
+        verify(idempotency).releaseClaim(eq(KEY), any());  // claim is released on validation failure
         verifyNoInteractions(transfers, gateway);
     }
 

@@ -100,20 +100,10 @@ final class RefundMapper {
     }
 
     private static <T> T requireNonNull(T value, String field, RefundEntity e) {
-        if (value == null) {
-            throw new IllegalStateException(
-                "RefundEntity " + e.getId() + " status " + e.getStatus()
-                    + " is missing required field " + field);
-        }
-        return value;
+        return EntityFieldGuards.requireNonNull(value, field, "RefundEntity " + e.getId(), e.getStatus());
     }
 
     private static String requireNonBlank(String value, String field, RefundEntity e) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalStateException(
-                "RefundEntity " + e.getId() + " status " + e.getStatus()
-                    + " is missing required field " + field);
-        }
-        return value;
+        return EntityFieldGuards.requireNonBlank(value, field, "RefundEntity " + e.getId(), e.getStatus());
     }
 }

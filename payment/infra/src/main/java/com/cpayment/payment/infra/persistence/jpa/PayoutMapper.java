@@ -133,29 +133,15 @@ final class PayoutMapper {
     }
 
     private static UUID requireTransferId(PayoutEntity e) {
-        if (e.getCustodyTransferId() == null) {
-            throw new IllegalStateException(
-                "PayoutEntity " + e.getId() + " has status " + e.getStatus()
-                    + " but no custody_transfer_id — schema invariant violated");
-        }
-        return e.getCustodyTransferId();
+        return EntityFieldGuards.requireNonNull(
+            e.getCustodyTransferId(), "custody_transfer_id", "PayoutEntity " + e.getId(), e.getStatus());
     }
 
     private static <T> T requireNonNull(T value, String field, PayoutEntity e) {
-        if (value == null) {
-            throw new IllegalStateException(
-                "PayoutEntity " + e.getId() + " status " + e.getStatus()
-                    + " is missing required field " + field);
-        }
-        return value;
+        return EntityFieldGuards.requireNonNull(value, field, "PayoutEntity " + e.getId(), e.getStatus());
     }
 
     private static String requireNonBlank(String value, String field, PayoutEntity e) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalStateException(
-                "PayoutEntity " + e.getId() + " status " + e.getStatus()
-                    + " is missing required field " + field);
-        }
-        return value;
+        return EntityFieldGuards.requireNonBlank(value, field, "PayoutEntity " + e.getId(), e.getStatus());
     }
 }
