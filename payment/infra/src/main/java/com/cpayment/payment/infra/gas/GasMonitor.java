@@ -9,18 +9,19 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /**
- * Scheduled job that runs through every {@code monitored-address} entry, looks up
- * the matching {@code funder} for its network, and asks {@link GasFunderService}
- * to ensure the address has enough native gas.
+ * Scheduled job that
+ * <ol>
+ *   <li>checks each configured funder's own native balance and logs / counts a
+ *       runway warning if low — so an unfunded funder doesn't silently break the
+ *       whole automation; and</li>
+ *   <li>walks every {@code monitored-address} entry and asks
+ *       {@link GasFunderService} to ensure that address has enough gas.</li>
+ * </ol>
  *
- * <p>The job is bound to a single thread by Spring's default scheduler — fine,
- * because each per-address call is short (one HTTP balance read, occasionally one
- * HTTP transfer). If the address list ever grows beyond a few dozen, switch to
- * the webhook-style executor pattern used in {@code WebhookDispatcher}.
- *
- * <p>A misconfiguration (monitored address on a network with no configured funder)
- * is logged on each tick — operators see the warning and either add the funder or
- * remove the monitor.
+ * <p>Runs on Spring's default scheduler thread, sequentially per tick. Each
+ * per-address call is short (one HTTP balance read, occasionally one HTTP transfer);
+ * if the monitored list grows beyond a few dozen, lift this to the parallel-executor
+ * pattern used in {@link com.cpayment.payment.infra.webhook.WebhookDispatcher}.
  */
 @Component
 public class GasMonitor {
@@ -38,9 +39,22 @@ public class GasMonitor {
     @Scheduled(fixedDelayString = "${cpayment.gas.poll-interval-millis:60000}")
     public void scan() {
         Map<NetworkId, GasFunderProperties.Funder> byNetwork = props.indexByNetwork();
+
+        // 1. Per-funder runway check.
+        for (GasFunderProperties.Funder funder : props.effectiveFunders()) {
+            try {
+                service.checkFunderRunway(funder);
+            } catch (RuntimeException ex) {
+                log.error("gas.monitor.funder-check-unexpected network={} reason={}",
+                    funder.network(), ex.getMessage(), ex);
+            }
+        }
+
+        // 2. Per-target top-up.
         for (GasFunderProperties.Monitored target : props.effectiveMonitored()) {
             GasFunderProperties.Funder funder = byNetwork.get(target.networkId());
             if (funder == null) {
+                // The validator should have rejected this at boot, but defensively:
                 log.warn("gas.monitor.no-funder-configured network={} address={}",
                     target.network(), target.address());
                 continue;
@@ -48,8 +62,6 @@ public class GasMonitor {
             try {
                 service.ensureGas(funder, target.address());
             } catch (RuntimeException ex) {
-                // ensureGas already absorbs typed failures; this catch shields the
-                // scheduler from any unexpected exception class.
                 log.error("gas.monitor.unexpected network={} address={} reason={}",
                     target.network(), target.address(), ex.getMessage(), ex);
             }

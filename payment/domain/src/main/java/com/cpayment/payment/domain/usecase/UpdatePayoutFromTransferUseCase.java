@@ -22,13 +22,17 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Advances a {@link Payout} when the custody bridge emits a Transfer* event.
+ * Advances a {@link Payout} on Transfer* events.
+ *
+ * <p>Each on-method returns {@code boolean}: {@code true} if a payout matched the
+ * inbound {@link TransferId} (handled — whether updated or deliberately dropped),
+ * {@code false} if no payout matched. The dispatcher uses the return value to
+ * decide whether to fall through to refund routing or to log the event as orphan.
  *
  * <p>The exhaustive sealed-type switch makes invalid transitions impossible:
  * trying to {@code confirm} a {@link SubmittedPayout} (not yet broadcast) won't
  * even compile, because {@link SubmittedPayout} has no {@code confirm} method.
- * Re-delivery of an event whose payout is already terminal — or in a state where
- * the transition makes no sense — is logged and dropped without resaving.
+ * Re-delivery of an event whose payout is already terminal is logged and dropped.
  */
 public final class UpdatePayoutFromTransferUseCase {
 
@@ -46,82 +50,62 @@ public final class UpdatePayoutFromTransferUseCase {
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
-    public void onBroadcast(CustodyEvent.TransferBroadcast e) {
-        Optional<Payout> maybe = lookup(e.id(), "broadcast");
-        if (maybe.isEmpty()) return;
-        Payout before = maybe.get();
-        Payout next = switch (before) {
+    public boolean onBroadcast(CustodyEvent.TransferBroadcast e) {
+        return advance(e.id(), "broadcast", PayoutEventType.PAYOUT_BROADCAST, before -> switch (before) {
             case SubmittedPayout s -> s.broadcast(e.txHash(), clock.instant());
             case BroadcastPayout b -> dropRedelivery("broadcast", b);
             case ConfirmedPayout c -> dropTerminal("broadcast", c);
             case FailedPayout    f -> dropTerminal("broadcast", f);
             case ReplacedPayout  r -> dropTerminal("broadcast", r);
             case CancelledPayout x -> dropTerminal("broadcast", x);
-        };
-        emit(before, next, PayoutEventType.PAYOUT_BROADCAST, e.id());
+        });
     }
 
-    public void onConfirmed(CustodyEvent.TransferConfirmed e) {
-        Optional<Payout> maybe = lookup(e.id(), "confirmed");
-        if (maybe.isEmpty()) return;
-        Payout before = maybe.get();
-        Payout next = switch (before) {
+    public boolean onConfirmed(CustodyEvent.TransferConfirmed e) {
+        return advance(e.id(), "confirmed", PayoutEventType.PAYOUT_CONFIRMED, before -> switch (before) {
             case BroadcastPayout b -> b.confirm(e.confirmations(), e.feeActual(), e.feeAsset(), clock.instant());
-            // Fast-finality chains may publish confirm without a prior broadcast event.
             case SubmittedPayout s -> s.broadcast(e.txHash(), clock.instant())
                 .confirm(e.confirmations(), e.feeActual(), e.feeAsset(), clock.instant());
             case ConfirmedPayout c -> dropRedelivery("confirmed", c);
             case FailedPayout    f -> dropTerminal("confirmed", f);
             case ReplacedPayout  r -> dropTerminal("confirmed", r);
             case CancelledPayout x -> dropTerminal("confirmed", x);
-        };
-        emit(before, next, PayoutEventType.PAYOUT_CONFIRMED, e.id());
+        });
     }
 
-    public void onFailed(CustodyEvent.TransferFailed e) {
-        Optional<Payout> maybe = lookup(e.id(), "failed");
-        if (maybe.isEmpty()) return;
-        Payout before = maybe.get();
-        Payout next = switch (before) {
+    public boolean onFailed(CustodyEvent.TransferFailed e) {
+        return advance(e.id(), "failed", PayoutEventType.PAYOUT_FAILED, before -> switch (before) {
             case SubmittedPayout s -> s.fail(e.reason(), e.message(), clock.instant());
             case BroadcastPayout b -> b.fail(e.reason(), e.message(), clock.instant());
             case FailedPayout    f -> dropRedelivery("failed", f);
             case ConfirmedPayout c -> dropTerminal("failed", c);
             case ReplacedPayout  r -> dropTerminal("failed", r);
             case CancelledPayout x -> dropTerminal("failed", x);
-        };
-        emit(before, next, PayoutEventType.PAYOUT_FAILED, e.id());
+        });
     }
 
-    public void onReplaced(CustodyEvent.TransferReplaced e) {
-        Optional<Payout> maybe = lookup(e.oldId(), "replaced");
-        if (maybe.isEmpty()) return;
-        Payout before = maybe.get();
-        Payout next = switch (before) {
+    public boolean onReplaced(CustodyEvent.TransferReplaced e) {
+        return advance(e.oldId(), "replaced", PayoutEventType.PAYOUT_REPLACED, before -> switch (before) {
             case SubmittedPayout s -> s.replaceWith(e.newId(), clock.instant());
             case BroadcastPayout b -> b.replaceWith(e.newId(), clock.instant());
             case ReplacedPayout  r -> dropRedelivery("replaced", r);
             case ConfirmedPayout c -> dropTerminal("replaced", c);
             case FailedPayout    f -> dropTerminal("replaced", f);
             case CancelledPayout x -> dropTerminal("replaced", x);
-        };
-        emit(before, next, PayoutEventType.PAYOUT_REPLACED, e.oldId());
+        });
     }
 
-    private Optional<Payout> lookup(TransferId transferId, String op) {
+    private boolean advance(TransferId transferId, String op, PayoutEventType type,
+                            java.util.function.Function<Payout, Payout> transition) {
         Optional<Payout> maybe = repo.findByCustodyTransferId(transferId);
-        if (maybe.isEmpty()) {
-            log.warn("payout.transfer-orphan op={} transferId={} — no local payout found",
-                op, transferId.value());
-        }
-        return maybe;
-    }
-
-    private void emit(Payout before, Payout next, PayoutEventType type, TransferId transferId) {
-        if (next == null) return; // re-delivery or unreachable branch — already logged
+        if (maybe.isEmpty()) return false;
+        Payout before = maybe.get();
+        Payout next = transition.apply(before);
+        if (next == null) return true; // dropped — was a payout match, just nothing to save
         gateway.apply(next, List.of(PayoutEvent.of(type, next)));
         log.info("payout.advanced id={} {} -> {} transferId={}",
             before.id().value(), before.status(), next.status(), transferId.value());
+        return true;
     }
 
     private Payout dropRedelivery(String op, Payout p) {
