@@ -26,7 +26,7 @@ class ResilientHttpExecutorTest {
     void get_retries_on_server_error_and_returns_when_one_succeeds() {
         AtomicInteger attempts = new AtomicInteger();
 
-        String result = executor.get("test", () -> {
+        String result = executor.get(() -> {
             int n = attempts.incrementAndGet();
             if (n < 3) throw HttpServerErrorException.create(
                 HttpStatusCode.valueOf(503), "down", null, null, null);
@@ -41,7 +41,7 @@ class ResilientHttpExecutorTest {
     void get_does_not_retry_on_client_error() {
         AtomicInteger attempts = new AtomicInteger();
 
-        assertThatThrownBy(() -> executor.get("test", () -> {
+        assertThatThrownBy(() -> executor.get(() -> {
             attempts.incrementAndGet();
             throw HttpClientErrorException.create(
                 HttpStatusCode.valueOf(400), "bad", null, null, null);
@@ -54,7 +54,7 @@ class ResilientHttpExecutorTest {
     void write_never_retries_even_on_server_error() {
         AtomicInteger attempts = new AtomicInteger();
 
-        assertThatThrownBy(() -> executor.write("test", () -> {
+        assertThatThrownBy(() -> executor.write(() -> {
             attempts.incrementAndGet();
             throw HttpServerErrorException.create(
                 HttpStatusCode.valueOf(503), "down", null, null, null);

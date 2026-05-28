@@ -28,6 +28,7 @@ public class WebhookDeliveryService {
 
     private static final Logger log = LoggerFactory.getLogger(WebhookDeliveryService.class);
     private static final String SIGNATURE_HEADER = "X-Cpayment-Signature";
+    private static final String TIMESTAMP_HEADER = "X-Cpayment-Timestamp";
     private static final String EVENT_ID_HEADER  = "X-Cpayment-Event-Id";
 
     private final WebhookOutboxJpaRepository outbox;
@@ -70,11 +71,13 @@ public class WebhookDeliveryService {
             recordFailure(row, "no webhook endpoint configured for merchant " + row.getMerchantId(), true);
             return;
         }
-        String signature = signer.sign(row.getPayload(), endpoint.get().secret());
+        long timestamp = clock.instant().getEpochSecond();
+        String signature = signer.sign(timestamp, row.getPayload(), endpoint.get().secret());
         try {
             http.post().uri(endpoint.get().url())
                 .header("Content-Type", "application/json")
                 .header(SIGNATURE_HEADER, signature)
+                .header(TIMESTAMP_HEADER, Long.toString(timestamp))
                 .header(EVENT_ID_HEADER, row.getId().toString())
                 .body(row.getPayload())
                 .retrieve()

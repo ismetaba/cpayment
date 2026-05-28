@@ -8,23 +8,21 @@ import com.cpayment.custody.domain.model.Transfer;
 import com.cpayment.custody.domain.model.TransferFilter;
 import com.cpayment.custody.domain.model.TransferId;
 import com.cpayment.custody.domain.model.TransferState;
+import com.cpayment.custody.domain.exception.UnsupportedCustodyOperationException;
 import com.cpayment.custody.domain.port.TransferIdempotencyStore;
 import com.cpayment.custody.domain.port.TransferPort;
-import com.cpayment.custody.infra.cusserver.exception.CustodyAdapterException;
 import com.cpayment.custody.infra.cusserver.mapping.AssetIdMapper;
 import com.cpayment.custody.infra.cusserver.mapping.FeeStrategyMapper;
 import com.cpayment.custody.infra.cusserver.mapping.NetworkIdMapper;
-import com.cpayment.custody.infra.cusserver.rest.CusServerRestClient;
+import com.cpayment.custody.infra.cusserver.rest.CusServerHttp;
 import com.cpayment.custody.infra.cusserver.rest.ResilientHttpExecutor;
 import com.cpayment.custody.infra.cusserver.rest.dto.CusResponse;
-import com.cpayment.custody.infra.cusserver.rest.dto.ResendTransactionRequestDTO;
 import com.cpayment.custody.infra.cusserver.rest.dto.SendTransactionRequestDTO;
 import com.cpayment.custody.infra.cusserver.rest.dto.SendTransactionResponseDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClientResponseException;
 
 import java.util.Optional;
 
@@ -53,20 +51,20 @@ public class CusServerTransferAdapter implements TransferPort {
 
     private static final Logger log = LoggerFactory.getLogger(CusServerTransferAdapter.class);
 
-    private final CusServerRestClient client;
+    private final CusServerHttp http;
     private final NetworkIdMapper networkMapper;
     private final AssetIdMapper assetMapper;
     private final FeeStrategyMapper feeMapper;
     private final TransferIdempotencyStore idempotency;
     private final ResilientHttpExecutor resilient;
 
-    public CusServerTransferAdapter(CusServerRestClient client,
+    public CusServerTransferAdapter(CusServerHttp http,
                                     NetworkIdMapper networkMapper,
                                     AssetIdMapper assetMapper,
                                     FeeStrategyMapper feeMapper,
                                     TransferIdempotencyStore idempotency,
                                     ResilientHttpExecutor resilient) {
-        this.client = client;
+        this.http = http;
         this.networkMapper = networkMapper;
         this.assetMapper = assetMapper;
         this.feeMapper = feeMapper;
@@ -106,9 +104,8 @@ public class CusServerTransferAdapter implements TransferPort {
         SendTransactionResponseDTO data;
         try {
             CusResponse<SendTransactionResponseDTO> response = resilient.write(
-                "sendTransfer",
-                () -> post("/api/v1/holder/transactions", body, new ParameterizedTypeReference<>() {}));
-            data = requireData(response, "sendTransfer");
+                () -> http.post("/api/v1/holder/transactions", body, new ParameterizedTypeReference<>() {}));
+            data = http.requireData(response, "sendTransfer");
         } catch (RuntimeException preSideEffect) {
             // cus-server did NOT accept the request → safe to release the claim so a
             // retry with a fresh body or a recovered backend can proceed.
@@ -130,9 +127,9 @@ public class CusServerTransferAdapter implements TransferPort {
         // speedUp by id only. For now, this is intentionally NOT implemented; resend
         // requires re-fetching the original transfer. Adding listTransfers + filter
         // by id would let us populate the resend body. Track as a TODO.
-        throw new UnsupportedOperationException(
+        throw new UnsupportedCustodyOperationException(
             "speedUp not yet implemented — requires looking up the original transfer to "
-                + "build a ResendTransactionRequestDTO");
+                + "build a resend request");
     }
 
     @Override
@@ -150,25 +147,5 @@ public class CusServerTransferAdapter implements TransferPort {
             filter.page() == null ? 0 : filter.page().pageNumber(),
             filter.page() == null ? 50 : filter.page().pageSize(),
             0L);
-    }
-
-    private <T> CusResponse<T> post(String path, Object body,
-                                    ParameterizedTypeReference<CusResponse<T>> ref) {
-        try {
-            return client.http().post().uri(path).body(body).retrieve().body(ref);
-        } catch (RestClientResponseException ex) {
-            throw new CustodyAdapterException(
-                "cus-server POST " + path + " failed: " + ex.getStatusCode() + " "
-                    + ex.getResponseBodyAsString(), ex);
-        } catch (RuntimeException ex) {
-            throw new CustodyAdapterException("cus-server POST " + path + " failed", ex);
-        }
-    }
-
-    private <T> T requireData(CusResponse<T> response, String operation) {
-        if (response == null || response.data() == null) {
-            throw new CustodyAdapterException(operation + ": cus-server returned empty data");
-        }
-        return response.data();
     }
 }

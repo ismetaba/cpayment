@@ -6,6 +6,7 @@ import org.springframework.boot.actuate.health.HealthEndpoint;
 import org.springframework.boot.actuate.info.InfoEndpoint;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.userdetails.User;
@@ -14,6 +15,8 @@ import org.springframework.security.crypto.password.NoOpPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
+
+import java.util.Set;
 
 /**
  * Minimal HTTP security:
@@ -37,6 +40,10 @@ import org.springframework.security.web.SecurityFilterChain;
 @Configuration
 public class SecurityConfiguration {
 
+    private static final String DEFAULT_ACTUATOR_PASSWORD = "change-me";
+    /** Profiles where the built-in default actuator password is tolerated. */
+    private static final Set<String> NON_PRODUCTION_PROFILES = Set.of("dev", "local", "test", "it");
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
@@ -54,11 +61,28 @@ public class SecurityConfiguration {
     @Bean
     public UserDetailsService actuatorUser(
             @Value("${cpayment.security.actuator.username:cpayment-ops}") String username,
-            @Value("${cpayment.security.actuator.password:change-me}")    String password) {
+            @Value("${cpayment.security.actuator.password:change-me}")    String password,
+            Environment env) {
+        if (DEFAULT_ACTUATOR_PASSWORD.equals(password) && !isNonProductionProfile(env)) {
+            throw new IllegalStateException(
+                "cpayment.security.actuator.password is still the default '"
+                    + DEFAULT_ACTUATOR_PASSWORD + "'. Set a real password (e.g. env "
+                    + "CPAYMENT_SECURITY_ACTUATOR_PASSWORD) before starting outside a "
+                    + "dev/test profile.");
+        }
         return new InMemoryUserDetailsManager(User.withUsername(username)
             .password(password)
             .roles("ACTUATOR")
             .build());
+    }
+
+    private static boolean isNonProductionProfile(Environment env) {
+        for (String profile : env.getActiveProfiles()) {
+            if (NON_PRODUCTION_PROFILES.contains(profile)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @SuppressWarnings("deprecation")

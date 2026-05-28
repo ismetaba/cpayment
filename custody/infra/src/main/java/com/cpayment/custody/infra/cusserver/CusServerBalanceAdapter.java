@@ -1,23 +1,20 @@
 package com.cpayment.custody.infra.cusserver;
 
 import com.cpayment.custody.domain.model.AccountId;
-import com.cpayment.custody.domain.model.Account;
 import com.cpayment.custody.domain.model.AssetId;
 import com.cpayment.custody.domain.model.Balance;
 import com.cpayment.custody.domain.model.NetworkId;
-import com.cpayment.custody.domain.port.AccountPort;
+import com.cpayment.custody.domain.exception.UnsupportedCustodyOperationException;
 import com.cpayment.custody.domain.port.BalancePort;
-import com.cpayment.custody.infra.cusserver.exception.CustodyAdapterException;
 import com.cpayment.custody.infra.cusserver.mapping.AssetIdMapper;
 import com.cpayment.custody.infra.cusserver.mapping.NetworkIdMapper;
-import com.cpayment.custody.infra.cusserver.rest.CusServerRestClient;
+import com.cpayment.custody.infra.cusserver.rest.CusServerHttp;
 import com.cpayment.custody.infra.cusserver.rest.ResilientHttpExecutor;
 import com.cpayment.custody.infra.cusserver.rest.dto.BalanceRequestDTO;
 import com.cpayment.custody.infra.cusserver.rest.dto.BalanceResponseDTO;
 import com.cpayment.custody.infra.cusserver.rest.dto.CusResponse;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClientResponseException;
 
 import java.math.BigInteger;
 import java.util.List;
@@ -31,19 +28,16 @@ import java.util.Set;
 @Component
 public class CusServerBalanceAdapter implements BalancePort {
 
-    private final CusServerRestClient client;
-    private final AccountPort accounts;
+    private final CusServerHttp http;
     private final NetworkIdMapper networkMapper;
     private final AssetIdMapper assetMapper;
     private final ResilientHttpExecutor resilient;
 
-    public CusServerBalanceAdapter(CusServerRestClient client,
-                                   AccountPort accounts,
+    public CusServerBalanceAdapter(CusServerHttp http,
                                    NetworkIdMapper networkMapper,
                                    AssetIdMapper assetMapper,
                                    ResilientHttpExecutor resilient) {
-        this.client = client;
-        this.accounts = accounts;
+        this.http = http;
         this.networkMapper = networkMapper;
         this.assetMapper = assetMapper;
         this.resilient = resilient;
@@ -73,8 +67,7 @@ public class CusServerBalanceAdapter implements BalancePort {
         );
 
         CusResponse<List<BalanceResponseDTO>> response = resilient.get(
-            "getBalanceByAddress",
-            () -> post("/api/v1/holder/balances", List.of(request),
+            () -> http.post("/api/v1/holder/balances", List.of(request),
                 new ParameterizedTypeReference<>() {}));
 
         if (response == null || response.data() == null || response.data().isEmpty()) {
@@ -99,24 +92,8 @@ public class CusServerBalanceAdapter implements BalancePort {
     private String resolveAccountAddress(AccountId account) {
         // No per-id endpoint on cus-server. Callers that already know the address should
         // use getBalanceByAddress directly; this fallback exists for completeness.
-        throw new UnsupportedOperationException(
+        throw new UnsupportedCustodyOperationException(
             "getBalance(AccountId,...) — pass address directly via getBalanceByAddress; "
                 + "cus-server has no per-id account read");
-    }
-
-    @SuppressWarnings("unused")  // kept for type-inference of the response in resilient.get
-    private Account ignoredHack() { return null; }
-
-    private <T> CusResponse<T> post(String path, Object body,
-                                    ParameterizedTypeReference<CusResponse<T>> ref) {
-        try {
-            return client.http().post().uri(path).body(body).retrieve().body(ref);
-        } catch (RestClientResponseException ex) {
-            throw new CustodyAdapterException(
-                "cus-server POST " + path + " failed: " + ex.getStatusCode() + " "
-                    + ex.getResponseBodyAsString(), ex);
-        } catch (RuntimeException ex) {
-            throw new CustodyAdapterException("cus-server POST " + path + " failed", ex);
-        }
     }
 }

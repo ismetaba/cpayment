@@ -69,7 +69,7 @@ public final class CreateInvoiceUseCase {
     public InvoiceCreatedResult execute(CreateInvoiceCommand command) {
         Objects.requireNonNull(command, "command");
 
-        String requestHash = RequestHash.of(command);
+        String requestHash = InvoiceRequestHash.of(command);
         Optional<Invoice> cached = idempotency.beginClaim(command.idempotencyKey(), requestHash);
         if (cached.isPresent()) {
             metrics.invoiceIdempotentHit();

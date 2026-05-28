@@ -1,31 +1,21 @@
 package com.cpayment.payment.domain.usecase;
 
+import com.cpayment.core.util.Sha256;
 import com.cpayment.payment.domain.model.IssueRefundCommand;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
-
+/** Canonical SHA-256 of the refund request — used by the two-phase idempotency store. */
 public final class RefundRequestHash {
 
     private RefundRequestHash() {}
 
     public static String of(IssueRefundCommand cmd) {
-        String canonical = String.join("|",
+        return Sha256.hex(String.join("|",
             cmd.invoiceId().value().toString(),
             cmd.amount().toString(),
             cmd.fromAddress(),
             cmd.toAddress(),
             cmd.reason().name(),
             cmd.memo().orElse("")
-        );
-        try {
-            byte[] hash = MessageDigest.getInstance("SHA-256")
-                .digest(canonical.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
+        ));
     }
 }
