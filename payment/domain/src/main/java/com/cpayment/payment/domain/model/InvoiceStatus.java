@@ -11,7 +11,8 @@ public enum InvoiceStatus {
     /** Deposit confirmed to required depth. */
     PAID,
 
-    /** Deposit observed but below the expected amount. */
+    /** Deposit observed but below the expected amount. Terminal — the merchant must
+     * issue a new invoice; subsequent deposit events for this invoice are ignored. */
     UNDERPAID,
 
     /** Expired without a deposit. */
@@ -21,6 +22,6 @@ public enum InvoiceStatus {
     CANCELLED;
 
     public boolean isTerminal() {
-        return this == PAID || this == EXPIRED || this == CANCELLED;
+        return this == PAID || this == UNDERPAID || this == EXPIRED || this == CANCELLED;
     }
 }

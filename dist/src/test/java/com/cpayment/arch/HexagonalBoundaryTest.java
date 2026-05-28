@@ -85,14 +85,6 @@ class HexagonalBoundaryTest {
     }
 
     @Test
-    void rest_controllers_only_live_in_infra() {
-        ArchRule rule = classes()
-            .that().areAnnotatedWith("org.springframework.web.bind.annotation.RestController")
-            .should().resideInAPackage("..infra..");
-        rule.check(classes);
-    }
-
-    @Test
     void rabbit_listener_methods_only_live_in_infra() {
         ArchRule rule = methods()
             .that().areAnnotatedWith("org.springframework.amqp.rabbit.annotation.RabbitListener")

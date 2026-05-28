@@ -75,7 +75,7 @@ public class ResilientHttpExecutor {
     }
 
     /** Idempotent read operations. Retried + circuit-broken. */
-    public <T> T get(String operationName, Supplier<T> op) {
+    public <T> T get(Supplier<T> op) {
         Supplier<T> retried = Retry.decorateSupplier(getRetry, op);
         Supplier<T> broken = CircuitBreaker.decorateSupplier(breaker, retried);
         return broken.get();
@@ -85,7 +85,7 @@ public class ResilientHttpExecutor {
      * Non-idempotent write operations. NOT retried — but circuit-broken so a degraded
      * cus-server doesn't pile up timed-out requests.
      */
-    public <T> T write(String operationName, Supplier<T> op) {
+    public <T> T write(Supplier<T> op) {
         return CircuitBreaker.decorateSupplier(breaker, op).get();
     }
 

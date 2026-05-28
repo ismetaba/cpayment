@@ -76,13 +76,23 @@ public class TransferUpdateMapper {
     }
 
     private AssetId resolveFeeAsset(TransactionUpdatePayloadDTO dto) {
-        if (dto.feeNetworkName() == null || dto.feeAssetName() == null) {
-            // Sensible fallback: synthesise an "unknown" asset id so downstream consumers
-            // can still see *that* a fee was charged. Unmapped → throws; we'd rather not
-            // drop the whole confirmation just because the fee asset is unfamiliar.
-            return assetMapper.fromCusServer("ETHEREUM", "ETH");
+        if (dto.feeNetworkName() != null && dto.feeAssetName() != null) {
+            return assetMapper.fromCusServer(dto.feeNetworkName(), dto.feeAssetName());
         }
-        return assetMapper.fromCusServer(dto.feeNetworkName(), dto.feeAssetName());
+        // A network fee is always paid in that network's native gas asset. If cus-server
+        // gives us the fee network but not the asset, resolve the network's native asset
+        // rather than guessing a fixed chain (the previous fallback always returned ETH,
+        // which mislabels BTC/Tron fees).
+        if (dto.feeNetworkName() != null) {
+            return assetMapper.nativeAssetOf(dto.feeNetworkName());
+        }
+        // No fee-network context at all — we cannot attribute the fee asset without
+        // fabricating a (likely wrong) chain. Surface it as a mapping failure: the event
+        // bridge logs it and increments cpayment mapping-failed metric for operator
+        // reconciliation, rather than silently recording a fee against the wrong asset.
+        throw new CustodyAdapterException(
+            "transfer confirmation " + dto.transactionId()
+                + " is missing fee network info; cannot attribute the fee asset");
     }
 
     private FailureReason classifyReason(String raw) {

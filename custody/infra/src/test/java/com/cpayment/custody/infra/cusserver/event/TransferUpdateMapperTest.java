@@ -3,6 +3,7 @@ package com.cpayment.custody.infra.cusserver.event;
 import com.cpayment.custody.domain.event.CustodyEvent;
 import com.cpayment.custody.domain.event.FailureReason;
 import com.cpayment.custody.infra.cusserver.event.dto.TransactionUpdatePayloadDTO;
+import com.cpayment.custody.infra.cusserver.exception.CustodyAdapterException;
 import com.cpayment.custody.infra.cusserver.mapping.AssetIdMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,6 +14,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class TransferUpdateMapperTest {
 
@@ -47,6 +49,24 @@ class TransferUpdateMapperTest {
         assertThat(e.confirmations()).isEqualTo(12);
         assertThat(e.feeActual()).isEqualTo(BigInteger.valueOf(21000));
         assertThat(e.feeAsset().canonical()).isEqualTo("eth:mainnet:eth");
+    }
+
+    @Test
+    void confirmed_without_fee_asset_falls_back_to_network_native_asset() {
+        UUID id = UUID.randomUUID();
+        CustodyEvent.TransferConfirmed e = (CustodyEvent.TransferConfirmed) mapper.toCustodyEvent(
+            payload(id, "CONFIRMED", "0xabc", 6, BigInteger.valueOf(1000), "TRON", null, null))
+            .orElseThrow();
+        // fee network known, asset missing -> native asset of that network, NOT ETH
+        assertThat(e.feeAsset().canonical()).isEqualTo("tron:mainnet:trx");
+    }
+
+    @Test
+    void confirmed_without_any_fee_network_is_rejected_as_mapping_failure() {
+        UUID id = UUID.randomUUID();
+        assertThatThrownBy(() -> mapper.toCustodyEvent(
+            payload(id, "CONFIRMED", "0xabc", 6, BigInteger.valueOf(1000), null, null, null)))
+            .isInstanceOf(CustodyAdapterException.class);
     }
 
     @Test

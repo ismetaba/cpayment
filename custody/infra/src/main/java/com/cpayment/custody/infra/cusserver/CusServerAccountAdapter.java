@@ -10,6 +10,7 @@ import com.cpayment.custody.domain.port.AccountPort;
 import com.cpayment.custody.infra.cusserver.exception.CustodyAdapterException;
 import com.cpayment.custody.infra.cusserver.mapping.AssetIdMapper;
 import com.cpayment.custody.infra.cusserver.mapping.NetworkIdMapper;
+import com.cpayment.custody.infra.cusserver.rest.CusServerHttp;
 import com.cpayment.custody.infra.cusserver.rest.CusServerRestClient;
 import com.cpayment.custody.infra.cusserver.rest.ResilientHttpExecutor;
 import com.cpayment.custody.infra.cusserver.rest.dto.AccountResponse;
@@ -34,15 +35,18 @@ import java.util.stream.Collectors;
 @Component
 public class CusServerAccountAdapter implements AccountPort {
 
+    private final CusServerHttp http;
     private final CusServerRestClient client;
     private final NetworkIdMapper networkMapper;
     private final AssetIdMapper assetMapper;
     private final ResilientHttpExecutor resilient;
 
-    public CusServerAccountAdapter(CusServerRestClient client,
+    public CusServerAccountAdapter(CusServerHttp http,
+                                   CusServerRestClient client,
                                    NetworkIdMapper networkMapper,
                                    AssetIdMapper assetMapper,
                                    ResilientHttpExecutor resilient) {
+        this.http = http;
         this.client = client;
         this.networkMapper = networkMapper;
         this.assetMapper = assetMapper;
@@ -61,9 +65,8 @@ public class CusServerAccountAdapter implements AccountPort {
         );
 
         CusResponse<CreateHolderAccountResponse> response = resilient.write(
-            "createAccount",
-            () -> post("/api/v1/holder/accounts", body, new ParameterizedTypeReference<>() {}));
-        CreateHolderAccountResponse data = requireData(response, "createAccount");
+            () -> http.post("/api/v1/holder/accounts", body, new ParameterizedTypeReference<>() {}));
+        CreateHolderAccountResponse data = http.requireData(response, "createAccount");
         return new Account(
             AccountId.of(data.id()),
             Optional.of(cmd.walletId()),
@@ -77,7 +80,6 @@ public class CusServerAccountAdapter implements AccountPort {
     @Override
     public List<Account> listAccountsByWallet(WalletId walletId) {
         CusResponse<PageOfAccount> response = resilient.get(
-            "listAccountsByWallet",
             () -> {
                 try {
                     return client.http().get()
@@ -114,25 +116,6 @@ public class CusServerAccountAdapter implements AccountPort {
         return symbols.stream()
             .map(sym -> assetMapper.toCusServer(new AssetId(network, sym)).assetName())
             .collect(Collectors.toCollection(LinkedHashSet::new));
-    }
-
-    private <T> CusResponse<T> post(String path, Object body, ParameterizedTypeReference<CusResponse<T>> ref) {
-        try {
-            return client.http().post().uri(path).body(body).retrieve().body(ref);
-        } catch (RestClientResponseException ex) {
-            throw new CustodyAdapterException(
-                "cus-server POST " + path + " failed: " + ex.getStatusCode() + " " + ex.getResponseBodyAsString(),
-                ex);
-        } catch (RuntimeException ex) {
-            throw new CustodyAdapterException("cus-server POST " + path + " failed", ex);
-        }
-    }
-
-    private <T> T requireData(CusResponse<T> response, String operation) {
-        if (response == null || response.data() == null) {
-            throw new CustodyAdapterException(operation + ": cus-server returned empty data");
-        }
-        return response.data();
     }
 
     private record PageOfAccount(List<AccountResponse> content) {}

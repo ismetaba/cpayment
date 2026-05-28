@@ -7,6 +7,7 @@ import com.cpayment.payment.domain.exception.InvoiceNotFoundException;
 import com.cpayment.payment.domain.exception.MerchantWalletNotConfiguredException;
 import com.cpayment.payment.domain.exception.PaymentException;
 import com.cpayment.payment.domain.exception.PayoutNotFoundException;
+import com.cpayment.payment.domain.exception.RefundNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -70,6 +71,12 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiError> onPayoutNotFound(PayoutNotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
             .body(ApiError.of("PAYOUT_NOT_FOUND", ex.getMessage()));
+    }
+
+    @ExceptionHandler(RefundNotFoundException.class)
+    public ResponseEntity<ApiError> onRefundNotFound(RefundNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ApiError.of("REFUND_NOT_FOUND", ex.getMessage()));
     }
 
     @ExceptionHandler(MerchantWalletNotConfiguredException.class)

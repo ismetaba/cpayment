@@ -5,17 +5,15 @@ import com.cpayment.custody.domain.model.EstimateFeeQuery;
 import com.cpayment.custody.domain.model.FeePreference;
 import com.cpayment.custody.domain.model.FeeQuote;
 import com.cpayment.custody.domain.port.FeePort;
-import com.cpayment.custody.infra.cusserver.exception.CustodyAdapterException;
 import com.cpayment.custody.infra.cusserver.mapping.AssetIdMapper;
 import com.cpayment.custody.infra.cusserver.mapping.NetworkIdMapper;
-import com.cpayment.custody.infra.cusserver.rest.CusServerRestClient;
+import com.cpayment.custody.infra.cusserver.rest.CusServerHttp;
 import com.cpayment.custody.infra.cusserver.rest.ResilientHttpExecutor;
 import com.cpayment.custody.infra.cusserver.rest.dto.CusResponse;
 import com.cpayment.custody.infra.cusserver.rest.dto.FeeRequestDTO;
 import com.cpayment.custody.infra.cusserver.rest.dto.FeeResponseDTO;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClientResponseException;
 
 import java.math.BigInteger;
 
@@ -27,16 +25,16 @@ import java.math.BigInteger;
 @Component
 public class CusServerFeeAdapter implements FeePort {
 
-    private final CusServerRestClient client;
+    private final CusServerHttp http;
     private final NetworkIdMapper networkMapper;
     private final AssetIdMapper assetMapper;
     private final ResilientHttpExecutor resilient;
 
-    public CusServerFeeAdapter(CusServerRestClient client,
+    public CusServerFeeAdapter(CusServerHttp http,
                                NetworkIdMapper networkMapper,
                                AssetIdMapper assetMapper,
                                ResilientHttpExecutor resilient) {
-        this.client = client;
+        this.http = http;
         this.networkMapper = networkMapper;
         this.assetMapper = assetMapper;
         this.resilient = resilient;
@@ -51,22 +49,9 @@ public class CusServerFeeAdapter implements FeePort {
         String path = "/api/v1/public/bc/fee/" + network + "/" + asset;
 
         CusResponse<FeeResponseDTO> response = resilient.get(
-            "estimateFee",
-            () -> {
-                try {
-                    return client.http().post().uri(path).body(body).retrieve()
-                        .body(new ParameterizedTypeReference<CusResponse<FeeResponseDTO>>() {});
-                } catch (RestClientResponseException ex) {
-                    throw new CustodyAdapterException(
-                        "estimateFee failed: " + ex.getStatusCode() + " "
-                            + ex.getResponseBodyAsString(), ex);
-                }
-            });
+            () -> http.post(path, body, new ParameterizedTypeReference<>() {}));
 
-        if (response == null || response.data() == null) {
-            throw new CustodyAdapterException("estimateFee: empty data");
-        }
-        FeeResponseDTO data = response.data();
+        FeeResponseDTO data = http.requireData(response, "estimateFee");
         AssetId feeAsset = data.feeAsset() != null
             ? assetMapper.fromCusServer(network, data.feeAsset())
             : query.asset();
