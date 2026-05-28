@@ -27,9 +27,15 @@ class HexagonalBoundaryTest {
 
     @BeforeAll
     void importClasses() {
+        // NOTE: we intentionally do NOT use DO_NOT_INCLUDE_JARS here. Under `mvn test`
+        // the sibling modules are on the classpath as target/classes directories, but
+        // under `mvn verify` they are already packaged as JARs — excluding JARs there
+        // would import zero com.cpayment classes and every rule would fail the
+        // failOnEmptyShould check. Importing from JARs too keeps these boundary checks
+        // meaningful under both lifecycles. (DO_NOT_INCLUDE_TESTS is kept so the rules
+        // analyse production code only.)
         classes = new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-            .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_JARS)
             .importPackages(ROOT);
     }
 
