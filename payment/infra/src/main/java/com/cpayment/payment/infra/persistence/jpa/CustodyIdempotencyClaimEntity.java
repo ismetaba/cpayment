@@ -25,7 +25,7 @@ public class CustodyIdempotencyClaimEntity {
     public enum State { PENDING, COMPLETED }
 
     @Id
-    @Column(name = "key", nullable = false, updatable = false, length = 128)
+    @Column(name = "idempotency_key", nullable = false, updatable = false, length = 128)
     private String key;
 
     @Column(name = "request_hash", nullable = false, length = 64)

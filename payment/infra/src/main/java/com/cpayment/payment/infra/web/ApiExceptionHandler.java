@@ -7,11 +7,13 @@ import com.cpayment.payment.domain.exception.InvoiceNotFoundException;
 import com.cpayment.payment.domain.exception.MerchantWalletNotConfiguredException;
 import com.cpayment.payment.domain.exception.PaymentException;
 import com.cpayment.payment.domain.exception.PayoutNotFoundException;
+import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -46,6 +48,26 @@ public class ApiExceptionHandler {
         return ResponseEntity.badRequest().body(ApiError.of(
             "BAD_REQUEST",
             "parameter '" + ex.getName() + "' must be a valid " + type));
+    }
+
+    /**
+     * A required {@code @RequestHeader} (e.g. the mandatory {@code Idempotency-Key})
+     * is absent. A missing required header is a client error — was falling through
+     * to the catch-all 500; now correctly returns 400.
+     */
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<ApiError> onMissingHeader(MissingRequestHeaderException ex) {
+        return ResponseEntity.badRequest().body(ApiError.of(
+            "BAD_REQUEST", "required header '" + ex.getHeaderName() + "' is missing"));
+    }
+
+    /**
+     * {@code @Validated}-triggered violations on method parameters (e.g. a blank
+     * {@code Idempotency-Key} failing {@code @NotBlank}). Also a 400, not a 500.
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiError> onConstraintViolation(ConstraintViolationException ex) {
+        return ResponseEntity.badRequest().body(ApiError.of("VALIDATION_FAILED", ex.getMessage()));
     }
 
     @ExceptionHandler(IdempotencyConflictException.class)

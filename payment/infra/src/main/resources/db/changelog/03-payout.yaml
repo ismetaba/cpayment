@@ -11,13 +11,13 @@ databaseChangeLog:
               - column: { name: asset_canonical,       type: VARCHAR(80),    constraints: { nullable: false } }
               - column: { name: from_address,          type: VARCHAR(120),   constraints: { nullable: false } }
               - column: { name: to_address,            type: VARCHAR(120),   constraints: { nullable: false } }
-              - column: { name: amount,                type: NUMERIC(38,0),  constraints: { nullable: false } }
+              - column: { name: amount,                type: "NUMERIC(38,0)",  constraints: { nullable: false } }
               - column: { name: memo,                  type: VARCHAR(200) }
               - column: { name: status,                type: VARCHAR(20),    constraints: { nullable: false } }
               - column: { name: custody_transfer_id,   type: UUID,           constraints: { unique: true } }
               - column: { name: tx_hash,               type: VARCHAR(120) }
               - column: { name: confirmations,         type: INT }
-              - column: { name: fee_actual,            type: NUMERIC(38,0) }
+              - column: { name: fee_actual,            type: "NUMERIC(38,0)" }
               - column: { name: fee_asset_canonical,   type: VARCHAR(80) }
               - column: { name: failure_reason,        type: VARCHAR(40) }
               - column: { name: failure_message,       type: VARCHAR(500) }
@@ -38,7 +38,7 @@ databaseChangeLog:
         - createTable:
             tableName: cpayment_payout_idempotency_claim
             columns:
-              - column: { name: key,          type: VARCHAR(128),   constraints: { primaryKey: true, nullable: false } }
+              - column: { name: idempotency_key, type: VARCHAR(128),  constraints: { primaryKey: true, nullable: false } }
               - column: { name: request_hash, type: VARCHAR(64),    constraints: { nullable: false } }
               - column: { name: state,        type: VARCHAR(16),    constraints: { nullable: false } }
               - column: { name: payout_id,    type: UUID }

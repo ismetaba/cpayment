@@ -47,15 +47,32 @@ mvn package       # produces dist/target/cpayment.jar
 
 Requires:
 
+- An **Oracle** database reachable at startup (default
+  `jdbc:oracle:thin:@//localhost:1521/CPAYMENT`). Liquibase runs the migrations
+  and JPA validates the schema during context refresh, so the DB is the first
+  hard dependency — the app will not start without it.
 - RabbitMQ on `localhost:5672` (defaults to `custody-admin/admin.1234`)
 - Keycloak realm at `http://localhost:8090/realms/tubitak`
 - cus-server REST at `http://localhost:1616`
 
-All four overridable through env vars (`CUS_BASE_URL`, `CUS_RABBIT_HOST`,
-`CUS_ISSUER`, …). See `dist/src/main/resources/application.yml`.
+All overridable through env vars (`CPAYMENT_DB_URL`, `CUS_BASE_URL`,
+`CUS_RABBIT_HOST`, `CUS_ISSUER`, …). See
+`dist/src/main/resources/application.yml`.
 
 ```bash
 java -jar dist/target/cpayment.jar
+```
+
+### Standalone smoke test (no Oracle)
+
+The `dev` profile swaps the datasource for an in-memory H2 so the app boots
+with no external database — Liquibase still runs the real changelogs and JPA
+still validates the schema. RabbitMQ/Keycloak/cus-server stay lazy and only
+fail on first use, so this is enough to exercise the HTTP and persistence
+wiring:
+
+```bash
+java -jar dist/target/cpayment.jar --spring.profiles.active=dev
 ```
 
 ## Endpoints
