@@ -1,0 +1,12 @@
+# Standalone smoke-test profile: `java -jar cpayment.jar --spring.profiles.active=dev`
+# Overrides ONLY the datasource to an in-memory H2 so the context boots without an
+# Oracle instance. Liquibase still runs the real changelogs and JPA still validates
+# the schema, so this exercises the actual persistence wiring. Everything else
+# (cus-server, Keycloak, RabbitMQ, security, merchant wallets) is inherited from
+# application.yml; the custody integrations stay lazy and only fail on first use.
+spring:
+  datasource:
+    url: jdbc:h2:mem:cpayment;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""

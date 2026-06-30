@@ -9,13 +9,13 @@ databaseChangeLog:
               - column: { name: id,                     type: UUID,           constraints: { primaryKey: true, nullable: false } }
               - column: { name: merchant_id,            type: UUID,           constraints: { nullable: false } }
               - column: { name: asset_canonical,        type: VARCHAR(80),    constraints: { nullable: false } }
-              - column: { name: expected_amount,        type: NUMERIC(38,0),  constraints: { nullable: false } }
+              - column: { name: expected_amount,        type: "NUMERIC(38,0)",  constraints: { nullable: false } }
               - column: { name: min_confirmations,      type: INT,            constraints: { nullable: false } }
               - column: { name: status,                 type: VARCHAR(20),    constraints: { nullable: false } }
               - column: { name: custody_account_id,     type: UUID,           constraints: { nullable: false, unique: true } }
               - column: { name: deposit_address,        type: VARCHAR(120),   constraints: { nullable: false } }
               - column: { name: received_tx_hash,       type: VARCHAR(120) }
-              - column: { name: received_amount,        type: NUMERIC(38,0) }
+              - column: { name: received_amount,        type: "NUMERIC(38,0)" }
               - column: { name: received_confirmations, type: INT }
               - column: { name: created_at,             type: TIMESTAMP,      constraints: { nullable: false } }
               - column: { name: updated_at,             type: TIMESTAMP,      constraints: { nullable: false } }
@@ -32,7 +32,7 @@ databaseChangeLog:
         - createTable:
             tableName: cpayment_idempotency_claim
             columns:
-              - column: { name: key,          type: VARCHAR(128),   constraints: { primaryKey: true, nullable: false } }
+              - column: { name: idempotency_key, type: VARCHAR(128),  constraints: { primaryKey: true, nullable: false } }
               - column: { name: request_hash, type: VARCHAR(64),    constraints: { nullable: false } }
               - column: { name: state,        type: VARCHAR(16),    constraints: { nullable: false } }
               - column: { name: invoice_id,   type: UUID }

@@ -6,7 +6,7 @@ databaseChangeLog:
         - createTable:
             tableName: cpayment_custody_idempotency_claim
             columns:
-              - column: { name: key,          type: VARCHAR(128),   constraints: { primaryKey: true, nullable: false } }
+              - column: { name: idempotency_key, type: VARCHAR(128),  constraints: { primaryKey: true, nullable: false } }
               - column: { name: request_hash, type: VARCHAR(64),    constraints: { nullable: false } }
               - column: { name: state,        type: VARCHAR(16),    constraints: { nullable: false } }
               - column: { name: transfer_id,  type: UUID }
